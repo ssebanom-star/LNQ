@@ -51,6 +51,16 @@ QEMU_LDFLAGS += -L$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)
 QEMU_LDFLAGS += -lcompat-limbo -llog
 QEMU_LDFLAGS += $(ARCH_LD_FLAGS)
 
+# limbo_logutils.h (force-included into every QEMU translation unit by
+# SYSTEM_INCLUDE) redefines printf/fprintf as macros that route output to
+# logcat. That defeats clang's format-string literal analysis, and QEMU builds
+# with -Werror, so the check has to be turned off or e.g. qemu-io-cmds.c fails
+# with -Wformat-security.
+QEMU_WARNING_FLAGS += -Wno-format-security
+QEMU_WARNING_FLAGS += -Wno-macro-redefined
+QEMU_WARNING_FLAGS += -Wno-unknown-warning-option
+
+QEMU_CFLAGS += $(QEMU_WARNING_FLAGS)
 QEMU_CFLAGS += $(SYSTEM_INCLUDE)
 QEMU_CFLAGS += $(SDL_RENDERING)
 QEMU_CFLAGS += $(ARCH_CFLAGS)

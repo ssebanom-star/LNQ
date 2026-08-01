@@ -40,6 +40,10 @@ else
     QEMU_FEATURES += --disable-sdl
 endif
 
+# SDL is the only audio backend Limbo uses. SDL 2.32 routes it through its own
+# native AAudio driver on Android (src/audio/aaudio/), which supersedes the
+# dlopen-based AAudio bridge Limbo carried against SDL 2.0.8 -- USE_AAUDIO and
+# compat/sdl-addons are no longer involved.
 ifeq ($(USE_SDL_AUDIO),true)
     QEMU_FEATURES += --audio-drv-list=sdl
 else

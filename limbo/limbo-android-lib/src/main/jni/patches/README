@@ -6,9 +6,10 @@ Patches applied to third-party sources before building.
                       and README.developers in the root directory, for how to
                       apply it.
 
-  sdl2-2.0.8.patch    Limbo's SDL2 changes. NOTE: still written against
-                      SDL2 2.0.8; it has to be forward-ported before the SDL
-                      frontend can be enabled with QEMU 11.
+  sdl2-2.32.4.patch   Limbo's SDL2 changes, forward-ported from 2.0.8. Now
+                      only the mouse-warp suppression: SDL gained a native
+                      AAudio backend in 2.0.14, which replaces the dlopen
+                      bridge the old patch carried.
 
 Removed relative to upstream Limbo:
 

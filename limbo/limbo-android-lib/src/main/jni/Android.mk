@@ -3,8 +3,11 @@
 #dep libs
 include $(NDK_PROJECT_PATH)/jni/compat/musl/Android.mk
 include $(NDK_PROJECT_PATH)/jni/compat/Android.mk
+# compat/sdl-addons was Limbo's AAudio bridge for SDL 2.0.8, which could only
+# reach Android audio through Java AudioTrack. SDL 2.32 has a native AAudio
+# driver, so the bridge is dead code; see patches/sdl2-2.32.4.patch.
 ifeq ($(USE_AAUDIO),true)
-	include $(NDK_PROJECT_PATH)/jni/compat/sdl-addons/Android.mk
+	$(error USE_AAUDIO is obsolete with SDL 2.32 - unset it)
 endif
 
 ifeq ($(USE_SDL),true)

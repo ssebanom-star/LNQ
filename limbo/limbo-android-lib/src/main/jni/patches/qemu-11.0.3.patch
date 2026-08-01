@@ -9,8 +9,7 @@ Two kinds of change live in here:
 
   1. Android/bionic build fixes -- QEMU upstream does not target Android, so
      a handful of macro collisions and missing-libc-feature issues have to be
-     resolved before it compiles at all.  Tagged __LIMBO__ where the change is
-     visible in code.
+     resolved before it compiles at all.
 
   2. Limbo integration -- the emulator has to be produced as a shared library
      that the app dlopen()s (Android forbids exec'ing binaries from an app's
@@ -21,6 +20,17 @@ Every hunk is guarded so that a normal, non-Android build of QEMU is
 unaffected: the build-system changes sit behind the new -Dshared_emulator
 meson option or behind a probe for bionic, and the integration changes sit
 behind #ifdef __LIMBO__.
+
+Several hunks from Limbo's old qemu-5.1.0.patch are deliberately NOT carried
+over, because upstream fixed the problem or deleted the code:
+
+  exec.c limbo_ignore_breakpoint_invalidate  breakpoint_invalidate() is gone
+  monitor/misc.c fd lookup bypass            Limbo does not use fdset/getfd
+  ui/sdl2.c NULL console guard               QEMU 11 already checks !scon
+  ui/sdl2.c SDL_VIDEODRIVER=x11              block no longer exists
+  util/qemu-openpty.c stub                   file no longer exists
+  audio/audio_legacy.c                       file no longer exists
+  configure feature-probe overrides          those features do exist at API 28
 
 Files touched:
 
@@ -34,9 +44,11 @@ Files touched:
      meson.build              | 48 +++++++++++++++++++++++++++++++++++++++---------
      meson_options.txt        |  7 +++++++
      ui/console.c             | 12 ++++++++++++
+     ui/sdl2-2d.c             | 11 +++++++++++
+     ui/sdl2.c                | 30 ++++++++++++++++++++++++++++++
      ui/vnc.c                 | 11 +++++++++++
      util/oslib-posix.c       | 14 ++++++++++++++
-     12 files changed, 159 insertions(+), 10 deletions(-)
+     14 files changed, 200 insertions(+), 10 deletions(-)
 
 ----------------------------------------------------------------------
 
@@ -324,6 +336,84 @@ index f445db113..631a189f4 100644
  OBJECT_DEFINE_ABSTRACT_TYPE(QemuConsole, qemu_console, QEMU_CONSOLE, OBJECT)
  
  typedef struct QemuGraphicConsole {
+diff --git a/ui/sdl2-2d.c b/ui/sdl2-2d.c
+index 73052383c..245156e7a 100644
+--- a/ui/sdl2-2d.c
++++ b/ui/sdl2-2d.c
+@@ -122,6 +122,17 @@ void sdl2_2d_switch(DisplayChangeListener *dcl,
+                                       surface_width(new_surface),
+                                       surface_height(new_surface));
+     sdl2_2d_redraw(scon);
++
++#ifdef __LIMBO__
++    /*
++     * __LIMBO__: the Android activity has to know the guest resolution to lay
++     * out the SDL surface and to scale touch coordinates. Declared in
++     * compat/limbo_compat_qemu.h, which is force-included into every QEMU
++     * translation unit (see SYSTEM_INCLUDE in android-limbo-build.mak).
++     */
++    Android_JNI_SetVMResolution(surface_width(new_surface),
++                                surface_height(new_surface));
++#endif
+ }
+ 
+ void sdl2_2d_refresh(DisplayChangeListener *dcl)
+diff --git a/ui/sdl2.c b/ui/sdl2.c
+index eccc5b0e9..9ecd8fce9 100644
+--- a/ui/sdl2.c
++++ b/ui/sdl2.c
+@@ -128,7 +128,20 @@ void sdl2_window_create(struct sdl2_console *scon)
+ #endif
+     } else {
+         /* The SDL renderer is only used by sdl2-2D, when OpenGL is disabled */
++#if defined(__LIMBO_SDL_FORCE_SOFTWARE_RENDERING__)
++        /*
++         * __LIMBO__: some Android devices have a GPU driver that cannot cope
++         * with the streaming texture updates sdl2-2d does; force the software
++         * renderer there.
++         */
++        scon->real_renderer = SDL_CreateRenderer(scon->real_window, -1,
++                                                 SDL_RENDERER_SOFTWARE);
++#elif defined(__LIMBO_SDL_FORCE_HARDWARE_RENDERING__)
++        scon->real_renderer = SDL_CreateRenderer(scon->real_window, -1,
++                                                 SDL_RENDERER_ACCELERATED);
++#else
+         scon->real_renderer = SDL_CreateRenderer(scon->real_window, -1, 0);
++#endif
+     }
+ 
+     sdl_update_caption(scon);
+@@ -882,6 +895,11 @@ static void sdl2_set_hint_x11_force_egl(void)
+ #endif
+ }
+ 
++#ifdef __LIMBO__
++/* __LIMBO__: backing storage for the extern in include/ui/console.h. */
++int limbo_sdl_scale_hint = -1;
++#endif
++
+ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
+ {
+     uint8_t data = 0;
+@@ -896,6 +914,18 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
+         SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
+     }
+ 
++#ifdef __LIMBO__
++    /*
++     * __LIMBO__: the guest framebuffer is almost always scaled to fit a phone
++     * screen, so let the user pick linear filtering from the Android UI.
++     * Set from Java before startup via VMExecutor.start(sdl_scale_hint).
++     */
++    if (limbo_sdl_scale_hint == 1) {
++        SDL_bool res = SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
++        LOGI("Setting SDL_HINT_RENDER_SCALE_QUALITY, code = %d", res);
++    }
++#endif
++
+     if (SDL_Init(SDL_INIT_VIDEO)) {
+         fprintf(stderr, "Could not initialize SDL(%s) - exiting\n",
+                 SDL_GetError());
 diff --git a/ui/vnc.c b/ui/vnc.c
 index 3a041926b..0d0e5728f 100644
 --- a/ui/vnc.c

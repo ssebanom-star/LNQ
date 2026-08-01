@@ -1,0 +1,97 @@
+Limbo changes for SDL2 2.32.4
+
+Apply from the SDL2 source root:
+
+    cd limbo-android-lib/src/main/jni/SDL2
+    patch -p1 < ../patches/sdl2-2.32.4.patch
+
+Replaces sdl2-2.0.8.patch. Two of the three concerns in that patch are gone:
+
+  * The AAudio bridge (~110 lines in src/core/android/SDL_android.c) is
+    obsolete. It dlopen()ed a Limbo-side helper because SDL 2.0.8 could only
+    reach Android audio through the Java AudioTrack path. SDL has shipped a
+    native AAudio backend since 2.0.14 (src/audio/aaudio/) and registers it
+    ahead of the legacy driver in SDL_audio.c, so it is picked automatically.
+    Limbo's compat/sdl-addons module and the USE_AAUDIO switch are no longer
+    needed.
+
+  * The audioBufferPinned NULL guard in Android_JNI_WriteAudioBuffer is not
+    carried over: that code path belongs to the legacy AudioTrack driver,
+    which is no longer selected.
+
+What remains is the mouse-warp suppression, which is still required -- see
+the comment in the hunk for why.
+
+     Android.mk             |  9 +++++++++
+     src/events/SDL_mouse.c | 24 ++++++++++++++++++++++++
+     2 files changed, 33 insertions(+)
+
+----------------------------------------------------------------------
+
+diff --git a/Android.mk b/Android.mk
+index 3ccbd44..4db5dbe 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -82,6 +82,15 @@ LOCAL_CXXFLAGS += -std=gnu++11
+ 
+ LOCAL_LDLIBS := -ldl -lGLESv1_CM -lGLESv2 -lOpenSLES -llog -landroid
+ 
++# LIMBO:
++# __LIMBO__ enables the Limbo-specific behaviour in this tree (see
++# src/events/SDL_mouse.c). Audio needs no flags any more: SDL has shipped a
++# native AAudio backend since 2.0.14 and prefers it over the legacy
++# Java-AudioTrack driver automatically, which replaces the dlopen-based
++# AAudio bridge Limbo carried against SDL 2.0.8.
++LOCAL_CFLAGS += -D__LIMBO__
++# LIMBO
++
+ LOCAL_LDFLAGS := -Wl,--no-undefined
+ 
+ ifeq ($(NDK_DEBUG),1)
+diff --git a/src/events/SDL_mouse.c b/src/events/SDL_mouse.c
+index a9a89f6..0450a62 100644
+--- a/src/events/SDL_mouse.c
++++ b/src/events/SDL_mouse.c
+@@ -1105,11 +1105,34 @@ void SDL_PerformWarpMouseInWindow(SDL_Window *window, int x, int y, SDL_bool ign
+ 
+ void SDL_WarpMouseInWindow(SDL_Window *window, int x, int y)
+ {
++#ifdef __LIMBO__
++    /*
++     * LIMBO: never warp the pointer.
++     *
++     * QEMU calls this from ui/sdl2.c whenever the guest switches pointer
++     * mode. SDL's Android video driver does not implement mouse->WarpMouse,
++     * so SDL_PerformWarpMouseInWindow() falls through to
++     * SDL_PrivateSendMouseMotion() and synthesises a motion event instead --
++     * which on a touchscreen makes the guest cursor jump around.
++     * Limbo tracks the pointer itself (see compat/sdl-extensions).
++     */
++    (void)window;
++    (void)x;
++    (void)y;
++    return;
++#else
+     SDL_PerformWarpMouseInWindow(window, x, y, SDL_FALSE);
++#endif
+ }
+ 
+ int SDL_WarpMouseGlobal(int x, int y)
+ {
++#ifdef __LIMBO__
++    /* LIMBO: see SDL_WarpMouseInWindow above. */
++    (void)x;
++    (void)y;
++    return 0;
++#else
+     SDL_Mouse *mouse = SDL_GetMouse();
+ 
+     if (mouse->WarpMouseGlobal) {
+@@ -1117,6 +1140,7 @@ int SDL_WarpMouseGlobal(int x, int y)
+     }
+ 
+     return SDL_Unsupported();
++#endif
+ }
+ 
+ static SDL_bool ShouldUseRelativeModeWarp(SDL_Mouse *mouse)

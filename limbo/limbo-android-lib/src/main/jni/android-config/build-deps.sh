@@ -33,6 +33,7 @@ GLIB_VER=2.84.0
 GLIB_SERIES=2.84
 PIXMAN_VER=0.44.2
 SLIRP_VER=4.9.1
+SDL_VER=2.32.4
 
 case "$ABI" in
     arm64-v8a) TRIPLE=aarch64-linux-android ;;
@@ -118,6 +119,36 @@ if [ ! -f "$PREFIX/lib/pkgconfig/slirp.pc" ]; then
         --cross-file "$CROSS" --prefix "$PREFIX" --libdir lib \
         --default-library static --buildtype release
     ninja -C "$SRC/slirp-build-$ABI" install
+fi
+
+######################################################################
+# SDL2
+#
+# Built with CMake rather than meson (SDL2 has no meson build) and left as a
+# *shared* library: Limbo's Java layer needs SDLActivity, and
+# compat/sdl-extensions links against it too. That is safe here because SDL2's
+# CMake build produces an unversioned libSDL2.so soname, which an APK can carry.
+#
+# Expects the Limbo patch to have been applied already:
+#   cd $SRC/SDL2-$SDL_VER && patch -p1 < <jni>/patches/sdl2-$SDL_VER.patch
+######################################################################
+if [ ! -f "$PREFIX/lib/pkgconfig/sdl2.pc" ]; then
+    fetch "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VER/SDL2-$SDL_VER.tar.gz" "SDL2-$SDL_VER.tar.gz"
+    if [ ! -d "$SRC/SDL2-$SDL_VER" ]; then
+        tar -xzf "$SRC/SDL2-$SDL_VER.tar.gz" -C "$SRC"
+        log "applying $HERE/../patches/sdl2-$SDL_VER.patch"
+        ( cd "$SRC/SDL2-$SDL_VER" && patch -p1 < "$HERE/../patches/sdl2-$SDL_VER.patch" )
+    fi
+    log "building SDL2 $SDL_VER"
+    cmake -S "$SRC/SDL2-$SDL_VER" -B "$SRC/sdl-build-$ABI" \
+        -DCMAKE_TOOLCHAIN_FILE="$NDK_ROOT/build/cmake/android.toolchain.cmake" \
+        -DANDROID_ABI="$ABI" -DANDROID_PLATFORM="android-$API" \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+        -DCMAKE_INSTALL_LIBDIR=lib \
+        -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF \
+        -DCMAKE_C_FLAGS="-D__LIMBO__"
+    cmake --build "$SRC/sdl-build-$ABI" -j"$(nproc)"
+    cmake --install "$SRC/sdl-build-$ABI"
 fi
 
 log "done. pkg-config modules available in $PREFIX/lib/pkgconfig:"

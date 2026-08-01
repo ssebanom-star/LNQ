@@ -71,8 +71,11 @@ USE_SDL ?= true
 # If you want to use SDL Audio with Android AudioTrack
 USE_SDL_AUDIO ?= true
 
-# if you want to use Android AAudio, it needs version platform API 26
-USE_AAUDIO ?= true
+# Obsolete. SDL 2.32 has a native AAudio backend (src/audio/aaudio/) and
+# registers it ahead of the legacy Java AudioTrack driver, so Limbo no longer
+# needs its own AAudio bridge. Kept only so existing scripts setting it do not
+# break; compat/sdl-addons is no longer built.
+USE_AAUDIO ?= false
 
 # Enable KVM
 # Note: virtually no retail Android device exposes /dev/kvm. QEMU falls back

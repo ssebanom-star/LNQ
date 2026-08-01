@@ -23,15 +23,31 @@
 
 ## 2. 산출물 검증
 
+최종 빌드(SDL + VNC + slirp, SAF `--wrap` 후킹 포함) 기준.
+
 ```
 $ file libqemu-system-x86_64.so
 ELF 64-bit LSB shared object, ARM aarch64, version 1 (SYSV), dynamically linked
 
 $ llvm-readelf -d libqemu-system-x86_64.so | grep -E 'SONAME|NEEDED'
+  (NEEDED)  Shared library: [libcompat-limbo.so]
+  (NEEDED)  Shared library: [liblog.so]
   (NEEDED)  Shared library: [libm.so]
+  (NEEDED)  Shared library: [libz.so]
+  (NEEDED)  Shared library: [libSDL2.so]
   (NEEDED)  Shared library: [libdl.so]
   (NEEDED)  Shared library: [libc.so]
   (SONAME)  Library soname: [libqemu-system-x86_64.so]
+
+$ llvm-nm -D -u libqemu-system-x86_64.so | grep __wrap_
+  U __wrap_close
+  U __wrap_fopen
+  U __wrap_mkstemp
+  U __wrap_open
+  U __wrap_stat
+
+$ llvm-nm -D -u libqemu-system-x86_64.so | grep -E '^ +U (open|fopen|mkstemp)$'
+  (없음 - 전부 __wrap_* 로 리디렉션됨)
 
 $ llvm-nm -D --defined-only libqemu-system-x86_64.so | grep -E 'qemu_(init|main_loop|cleanup|system_)'
 T qemu_cleanup
@@ -51,12 +67,14 @@ $ llvm-readelf -l libqemu-system-x86_64.so | grep -m1 LOAD
   LOAD  ...  R  0x4000          # 16KB 페이지 정렬 OK
 
 $ llvm-strip -o q.so libqemu-system-x86_64.so && stat -c%s q.so
-34416616                        # 약 34 MB
+34388264                        # 약 34 MB
 ```
 
 체크포인트 전부 통과:
 
-- **NEEDED가 플랫폼 라이브러리 3개뿐** — glib/pixman/libslirp/pcre2/libffi는 전부 정적 링크
+- **NEEDED가 전부 버전 접미사 없는 이름** — Android 플랫폼 라이브러리이거나 Limbo 자체 라이브러리.
+  glib/pixman/libslirp/pcre2/libffi는 정적 링크되어 아예 나타나지 않는다
+- **`--wrap` 리디렉션이 실제로 적용됨** — 평문 `open`/`fopen`/`mkstemp` 참조가 남아 있지 않다
 - **SONAME에 버전 접미사 없음** — APK 탑재 가능 (§3.1 참조)
 - **JNI 진입점 5개 모두 export**
 - **Limbo 런타임 튜닝 전역 변수 모두 export**
@@ -218,6 +236,92 @@ JIT 페이지 자체가 문제이기도 하다.
 
 ---
 
+## 3-B. SDL 프론트엔드 포팅에서 나온 것들
+
+### 3-B.1 ★ Limbo의 AAudio 브리지가 통째로 불필요해짐
+
+`sdl2-2.0.8.patch`의 절반 이상(약 110줄)은 `src/core/android/SDL_android.c`에
+AAudio 브리지를 심는 코드였다. SDL 2.0.8이 Android 오디오에 Java `AudioTrack`으로만
+접근할 수 있었기 때문에, Limbo가 별도 `.so`(`compat/sdl-addons`)를 만들어
+`dlopen`으로 물려 쓰는 구조였다.
+
+**SDL은 2.0.14부터 네이티브 AAudio 백엔드(`src/audio/aaudio/`)를 갖고 있고**,
+`SDL_audio.c`의 부트스트랩 목록에서 레거시 `ANDROIDAUDIO_bootstrap`보다 **앞에**
+등록되어 자동으로 선택된다. 따라서:
+
+- `compat/sdl-addons` 모듈 폐기
+- `USE_AAUDIO` 스위치 폐기 (`true`로 두면 빌드가 명시적으로 실패하도록 함)
+- 패치가 97줄로 축소 (마우스 warp 억제만 남음)
+
+### 3-B.2 마우스 warp 억제는 여전히 필요
+
+2.32에서 `SDL_WarpMouseInWindow()`는 `SDL_PerformWarpMouseInWindow()`로 위임한다.
+SDL의 **Android 비디오 드라이버는 `mouse->WarpMouse`를 구현하지 않으므로**
+해당 함수는 `SDL_PrivateSendMouseMotion()`으로 떨어져 **합성 모션 이벤트를 주입**한다.
+터치스크린에서 게스트 커서가 튀는 원인이므로 억제를 유지했다.
+
+### 3-B.3 QEMU 11이 이미 고쳐놓은 것
+
+`qemu-5.1.0.patch`에 있던 `ui/sdl2.c`의 NULL console 크래시 가드는 **불필요**하다.
+QEMU 11의 `handle_mousemotion()` / `handle_mousebutton()`은 이미
+`if (!scon || !qemu_console_is_graphic(scon->dcl.con)) return;` 를 갖고 있다.
+`SDL_VIDEODRIVER=x11` 강제 설정 블록도 QEMU 11에는 아예 없다.
+
+### 3-B.4 `monitor/misc.c` 패치는 이식하지 않음
+
+원래 패치는 `monitor_get_fd()`가 `fdname`을 `atoi()`로 해석해 그대로 fd로 쓰게 했다
+(주석에도 "FIXME: The lookup for the fd fails below"라고 적혀 있다).
+그런데 Limbo의 Java 계층은 `add-fd`/`/dev/fdset/`을 **전혀 쓰지 않고**
+`-drive file=/content//<uri>` 형태로 경로를 그대로 넘긴다 — 즉 SAF 처리는 전적으로
+`open()` 후킹이 담당한다. 이식하면 이름이 안 맞는 모든 조회가 `atoi()` 쓰레기값을
+fd로 반환하는 위험만 남으므로 **의도적으로 제외**했다.
+
+### 3-B.5 `printf` 매크로 vs `-Werror=format-security`
+
+`limbo_logutils.h`는 `printf`/`fprintf`를 logcat으로 보내는 매크로로 치환하는데,
+이 헤더가 모든 QEMU 번역 단위에 force-include 되므로 clang의 포맷 문자열 리터럴
+분석이 무력화된다. QEMU는 `-Werror`로 빌드하므로 `qemu-io-cmds.c` 등이 깨진다.
+→ `-Wno-format-security` 필요 (`QEMU_WARNING_FLAGS`).
+
+### 3-B.6 SDL2 SONAME은 문제없음
+
+§3.1의 SONAME 문제는 SDL2에는 해당하지 않는다. SDL2의 CMake 빌드는
+**버전 접미사 없는 `libSDL2.so`** 를 만들기 때문에 그대로 APK에 넣을 수 있다.
+그래서 SDL2만 공유 라이브러리로 유지한다 (Java `SDLActivity`와
+`compat/sdl-extensions`가 링크해야 하므로 정적화도 불가능하다).
+
+---
+
+## 3-C. SAF 파일 접근: `--wrap` 구현
+
+`objcopy --redefine-sym` 대체는 `compat/limbo_compat_wrap.c`로 구현했다.
+링커 플래그는 `LIMBO_WRAP_SYMS`(`android-qemu-config.mak`)에서 생성한다.
+
+구현하면서 **기존 동작의 성능 문제 하나를 같이 고쳤다**: `android_close()`는
+호출마다 스레드를 띄우고 JNI로 Java에 들어가 `ParcelFileDescriptor`를 닫는다.
+심볼 이름 치환 방식은 대상을 구분할 수 없어 QEMU의 **모든** `close()`(소켓, 파이프,
+timerfd, 블록 백엔드 파일 …)가 이 경로를 탔다. 진짜 함수로 가로채면 구분이 가능하므로,
+SAF에서 받은 fd만 등록해두고 그것만 비싼 경로로 보낸다.
+
+```c
+int __wrap_close(int fd)
+{
+    if (limbo_saf_fd_take(fd)) {
+        return android_close(fd);   /* JNI round trip */
+    }
+    return close(fd);               /* everything else */
+}
+```
+
+`__real_*` 별칭은 `--wrap`을 준 링크 안에서만 존재하는데, 이 파일은
+`libcompat-limbo.so`(그 링크에 `--wrap` 없음)로 컴파일되므로 파일 안의 `close()`는
+이미 libc의 것이다 — 재귀가 생기지 않는다.
+
+`_FORTIFY_SOURCE`가 상수 flags를 가진 `open()`을 `__open_2()`로 재작성하므로
+그쪽도 함께 가로챈다.
+
+---
+
 ## 4. 확정된 configure 명령
 
 `android-config/android-qemu-config-11.0.3.mak`가 생성하는 것과 동일하다.
@@ -241,18 +345,58 @@ $QEMU_SRC/configure \
 
 ---
 
-## 5. 남은 작업
+## 5. 상태 요약
 
 | 항목 | 상태 |
 |---|---|
-| `x86_64-softmmu` arm64-v8a 빌드 | **완료** |
+| `x86_64-softmmu` arm64-v8a 빌드 (VNC) | **완료** |
+| `x86_64-softmmu` arm64-v8a 빌드 (SDL + VNC) | **완료** |
+| glib 2.84 / pixman 0.44.2 / libslirp 4.9.1 정적 크로스 빌드 | **완료** |
+| SDL2 2.32.4 크로스 빌드 (`libSDL2.so`, AAudio 백엔드 포함) | **완료** |
+| `qemu-11.0.3.patch` 무결성 (pristine 트리에 clean apply) | **완료** |
+| `sdl2-2.32.4.patch` 무결성 | **완료** |
+| `__wrap_*` SAF 후킹 구현 + 실제 리디렉션 검증 | **완료** |
+| compat 레이어(`libcompat-limbo.so`) NDK r27 빌드 | **완료** |
 | `x86_64` ABI 빌드 | 미실행 (같은 파이프라인, ABI만 교체) |
-| SDL 프론트엔드 | **미완** — `sdl2-2.0.8.patch`를 SDL2 2.32로 포워드포팅 필요. 현재는 VNC 전용 |
-| `ui/sdl2.c` Limbo 훅 | SDL 활성화 후 적용 (렌더러 강제, scale hint, NULL console 가드, 해상도 콜백) |
-| `monitor/fds.c` SAF fd 패스스루 | 미적용 |
-| `__wrap_*` SAF 파일 접근 구현 | 링커 플래그는 배선 완료, `compat/`에 `__wrap_open` 등 구현 필요 |
-| ndk-build 쪽 (compat, SDL2, JNI) | 미검증 |
+| ndk-build 쪽 (compat, SDL2 Android.mk, JNI) 전체 실행 | 미검증 |
+| Gradle APK 조립 | 미검증 |
 | 실기기 부팅 테스트 | 미실행 |
 
-SDL·SAF·실기기 검증이 남아 있으므로 **아직 동작하는 APK는 아니다.** 다만 가장 불확실했던
-"QEMU 11을 Android용 공유 라이브러리로 만들 수 있는가"는 확인됐다.
+`make limbo` 전체 파이프라인과 실기기 검증이 남아 있으므로 **아직 릴리스 가능한 APK는 아니다.**
+다만 포팅의 불확실성이 컸던 부분 — QEMU 11을 Android용 공유 라이브러리로 만들 수 있는가,
+의존성을 APK에 실을 수 있는가, SDL 프론트엔드를 붙일 수 있는가 — 은 모두 실빌드로 확인됐다.
+
+### 3-D. NDK r27이 드러낸 Limbo 자체 버그
+
+compat 레이어를 NDK r27로 빌드하자 `limbo_compat.c`에서 두 건이 잡혔다.
+둘 다 32비트 ABI에서만 돌던 시절의 잔재다.
+
+**`strchrnul()` 셰임이 64비트에서 깨져 있었다.**
+
+```c
+int endofs = s + length;   /* 64비트 포인터를 int로 절단 */
+return endofs;             /* 절단된 값을 포인터로 반환 */
+```
+
+`int`와 포인터 폭이 같은 arm32에서는 우연히 동작했지만 arm64에서는 쓰레기 포인터를
+반환한다. QEMU 11은 `util/cutils.c` 등에서 `strchrnul`을 쓰므로 실제로 밟혔을 코드다.
+bionic이 API 24부터 `strchrnul`을 제공하므로 **셰임을 삭제**했다.
+
+**`valloc()`이 `<malloc.h>` 없이 `memalign()`을 호출했다.**
+
+암묵적 선언이라 반환값이 `int`로 간주되어 역시 포인터가 절단된다. clang r27은 경고가
+아니라 에러로 거부한다. `valloc` 자체는 bionic LP64에 없고 QEMU의
+`util/memalign.c:61`이 호출하므로 **셰임은 유지하되 헤더를 추가**했다.
+
+### 의도적으로 이식하지 않은 것
+
+| 원래 패치 | 사유 |
+|---|---|
+| `exec.c` `limbo_ignore_breakpoint_invalidate` | `breakpoint_invalidate()` 자체가 QEMU 11에 없음 |
+| `monitor/misc.c` fd 우회 | Limbo가 fdset/getfd를 쓰지 않음 (§3-B.4) |
+| `ui/sdl2.c` NULL console 가드 | QEMU 11에 이미 있음 (§3-B.3) |
+| `ui/sdl2.c` `SDL_VIDEODRIVER=x11` | QEMU 11에 해당 블록 없음 |
+| `SDL_android.c` AAudio 브리지 | SDL 2.0.14+ 네이티브 백엔드로 대체 (§3-B.1) |
+| `configure` 기능 탐지 우회 다수 | API 28에서 실제로 제공되므로 강제 비활성이 오히려 해로움 |
+| `util/qemu-openpty.c` 스텁 | 파일 자체가 없음 (pty 로직은 `chardev/char-pty.c`) |
+| `audio/audio_legacy.c` | 파일 삭제됨 |

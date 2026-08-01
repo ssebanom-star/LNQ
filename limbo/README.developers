@@ -49,8 +49,9 @@ Two things changed fundamentally compared to upstream Limbo:
 
     Unlike upstream Limbo you do NOT need to download glib, libffi, pixman or
     SDL2 by hand: android-config/build-deps.sh cross-compiles glib (with
-    libffi, pcre2 and proxy-libintl as meson subprojects), pixman and libslirp,
-    and points pkg-config at the NDK's own libz.
+    libffi, pcre2 and proxy-libintl as meson subprojects), pixman, libslirp
+    and SDL2, applies patches/sdl2-2.32.4.patch on the way, and points
+    pkg-config at the NDK's own libz.
 
 ===============================================================================
 
@@ -128,31 +129,37 @@ Two things changed fundamentally compared to upstream Limbo:
 
     a. Android-compatibility changes in QEMU are tagged __LIMBO__.
 
-    b. Configuration files:
+    b. Audio: SDL 2.32 has a native AAudio backend and prefers it over the
+       legacy Java AudioTrack driver, so Limbo's old AAudio bridge
+       (compat/sdl-addons, USE_AAUDIO) is no longer built.
+
+    c. Configuration files:
         android-config/android-limbo-config.mak       user-facing settings
         android-config/android-qemu-config.mak        configure command line
         android-config/android-qemu-config-11.0.3.mak QEMU 11 feature flags
         android-config/gen-meson-cross.sh             meson cross file generator
         android-config/build-deps.sh                  dependency cross-build
 
-    c. Makefiles:
+    d. Makefiles:
         Makefile, Android.mk, Application.mk, android-limbo-build.mak
 
        android-qemu-build.mak is gone: it existed only to be included from
        QEMU's Makefile.target.
 
-    d. Frontend UI options: Config.java
+    e. Frontend UI options: Config.java
 
 ===============================================================================
 
 9. Known gaps in this port
 
-    * SDL frontend is not enabled yet: patches/sdl2-2.0.8.patch still targets
-      SDL2 2.0.8 and has to be forward-ported (2.32.x is current). Until then
-      build with USE_SDL=false and use the VNC frontend.
-
     * Only x86_64-softmmu is wired up. Other guests need libfdt cross-built
-      into the dependency prefix.
+      into the dependency prefix (see android-qemu-config-11.0.3.mak).
+
+    * Only arm64-v8a has been built and verified; x86_64 uses the same
+      pipeline with BUILD_HOST changed but has not been exercised.
+
+    * Nothing has been run on a device yet. The libraries link and export the
+      right symbols, but no guest has been booted.
 
     * KVM is compiled in but effectively unused: almost no retail Android
       device exposes /dev/kvm. QEMU falls back to TCG at run time.
