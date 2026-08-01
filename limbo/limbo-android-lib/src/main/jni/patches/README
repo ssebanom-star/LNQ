@@ -1,0 +1,23 @@
+Patches applied to third-party sources before building.
+
+  qemu-11.0.3.patch   Android/bionic build fixes plus the Limbo integration
+                      hooks (shared-library emulator, runtime-tunable display
+                      and audio settings). See the header of the file itself,
+                      and README.developers in the root directory, for how to
+                      apply it.
+
+  sdl2-2.0.8.patch    Limbo's SDL2 changes. NOTE: still written against
+                      SDL2 2.0.8; it has to be forward-ported before the SDL
+                      frontend can be enabled with QEMU 11.
+
+Removed relative to upstream Limbo:
+
+  qemu-2.9.1.patch    Both hooked into Makefile.target, which QEMU deleted in
+  qemu-5.1.0.patch    5.2 when the build moved to meson. Neither version can
+                      be built by this tree any more; use upstream Limbo if
+                      you need them.
+
+  glib-2.56.1.patch   glib is no longer built with autotools. From 2.58 it is
+  android.cache       meson-only, and android-config/build-deps.sh cross-builds
+                      glib 2.84 (with libffi/pcre2/proxy-libintl as meson
+                      subprojects) without needing either file.

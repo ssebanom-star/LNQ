@@ -1,0 +1,4 @@
+work/
+limbo/limbo-android-lib/src/main/jni/qemu/
+limbo/limbo-android-lib/src/main/obj/
+limbo/**/jniLibs/

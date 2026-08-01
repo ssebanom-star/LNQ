@@ -1,6 +1,13 @@
 # Limbo x86 → QEMU 11 포팅 계획서
 
-작성일: 2026-08-01
+작성일: 2026-08-01 · **갱신: 2026-08-01 (Phase 0~2 실빌드 검증 완료)**
+
+> **상태**: 32비트 지원 중단이 확정되어(§7-1) 계획이 arm64-v8a / x86_64 전용으로 확정되었다.
+> 계획 수립 후 실제 NDK r27c 크로스 빌드를 수행하여 **`libqemu-system-x86_64.so` 생성에 성공**했다.
+> 실측 결과는 [`qemu11-build-results.md`](qemu11-build-results.md) 참조.
+> 포팅 작업 트리는 [`../limbo/`](../limbo/) 에 있다.
+
+작성일 기준
 대상 저장소: [limboemu/limbo](https://github.com/limboemu/limbo) `master` (= `Branch_Branch_6.0.1`, commit `887c6a6`)
 목표 QEMU: **11.0.3** (stable, 2026-07-24 릴리스). 11.1.0은 현재 rc2 단계.
 
@@ -419,7 +426,11 @@ Phase 1과 Phase 5/6은 병렬 진행 가능 → 2인 투입 시 9~11주.
 
 ## 7. 결정이 필요한 항목
 
-1. **32비트 기기 처리**: 레거시 APK 이원 유지 vs 지원 중단
+1. ~~**32비트 기기 처리**~~ → **결정됨: 지원 중단.** 64비트 기기 전용으로 진행한다.
+   `armeabi-v7a` / `x86_64` ABI는 빌드 설정에서 제거했고, 지정 시 명시적으로 빌드가 실패한다
+   (`android-limbo-build.mak`). 32비트 사용자는 업스트림 Limbo 6.0.1을 계속 사용한다.
+
+1. ~~레거시 APK 이원 유지 vs 지원 중단~~
 2. **게스트 아키텍처 범위**: `x86_64-softmmu`만 vs `aarch64`/`ppc64`/`sparc64` 동시 포팅
    (본 계획은 x86 우선. 다른 게스트는 `--disable-fdt` 불가 → dtc 벤더링 필수)
 3. **UEFI 지원**: `edk2-x86_64-code.fd` 번들 여부 (APK 용량 +4MB 내외)

@@ -1,0 +1,166 @@
+Limbo Emulator (QEMU) for Android -- QEMU 11 port
+
+================================================================================
+
+1. What is this?
+
+A fork of limboemu/limbo (app v6.0.1, commit 887c6a6) with the bundled QEMU
+upgraded from 5.1.0 to 11.0.3. See ../docs/limbo-x86-qemu11-port-plan.md for
+the full analysis and UPSTREAM.md for provenance.
+
+Two things changed fundamentally compared to upstream Limbo:
+
+  * 64-bit only. QEMU 11.0 removed every 32-bit host backend, so armeabi-v7a
+    and x86 cannot be built at all. Use upstream Limbo 6.0.1 for those.
+
+  * The native build is meson/ninja, not make. QEMU deleted Makefile.target in
+    5.2, which is where upstream Limbo injected its shared-library link rule.
+
+===============================================================================
+
+2. Requirements
+
+    Android SDK, build-tools 35
+    Android NDK r27c or newer (clang only; the gcc path is gone)
+    JDK 17 (required by AGP 8)
+    Linux host (Ubuntu 22.04/24.04 tested)
+
+    meson >= 1.5, ninja, python >= 3.9, pkg-config, curl, patch
+
+    sudo apt-get install meson ninja-build python3 pkg-config curl patch
+
+===============================================================================
+
+3. Configuration
+
+    limbo-android-lib/src/main/jni/android-config/android-limbo-config.mak
+
+    At minimum set NDK_ROOT. BUILD_HOST must be arm64-v8a or x86_64.
+
+===============================================================================
+
+4. Get and patch QEMU
+
+    cd limbo-android-lib/src/main/jni
+    curl -fSLO https://download.qemu.org/qemu-11.0.3.tar.xz
+    tar -xJf qemu-11.0.3.tar.xz
+    mv qemu-11.0.3 qemu
+    cd qemu && patch -p1 < ../patches/qemu-11.0.3.patch
+
+    Unlike upstream Limbo you do NOT need to download glib, libffi, pixman or
+    SDL2 by hand: android-config/build-deps.sh cross-compiles glib (with
+    libffi, pcre2 and proxy-libintl as meson subprojects), pixman and libslirp,
+    and points pkg-config at the NDK's own libz.
+
+===============================================================================
+
+5. Build
+
+    cd limbo-android-lib/src/main/jni
+    export BUILD_HOST=arm64-v8a
+    export BUILD_GUEST=x86_64-softmmu
+    make limbo
+
+    Useful individual targets:
+
+        make check-tools    verify meson/ninja/pkg-config/NDK are usable
+        make deps           cross-build glib, pixman, libslirp
+        make config-qemu    run QEMU's configure (generates the meson build dir)
+        make qemu           ninja the emulator library + copy pc-bios assets
+        make install        stage into limbo-android-x86/src/main/jniLibs
+        make distclean      remove the build dirs and the dependency prefix
+
+    Output:
+
+        limbo-android-lib/src/main/jniLibs/<ABI>/
+            libcompat-limbo.so, libSDL2.so, liblimbo.so, ...
+
+        limbo-android-x86/src/main/jniLibs/<ABI>/
+            libqemu-system-x86_64.so
+
+    IMPORTANT: every NEEDED entry of libqemu-system-*.so must be an
+    unversioned platform library (libc.so, libm.so, libdl.so, liblog.so).
+    Android's package installer does not extract lib*.so.N from an APK, so a
+    dependency with a versioned soname builds fine and then fails to load on
+    device. "make install" prints the NEEDED list so you can check. This is
+    why glib/pixman/libslirp are linked statically.
+
+===============================================================================
+
+6. Build the APK
+
+    export ANDROID_SDK_ROOT=~/Android/Sdk
+    ./gradlew assembleRelease
+
+===============================================================================
+
+7. How the emulator is loaded
+
+    Android forbids exec'ing binaries from an app's private directory (W^X,
+    enforced from API 29), so QEMU is built as a shared library and loaded
+    with dlopen(). The meson patch turns
+
+        executable('qemu-system-x86_64', ...)
+
+    into
+
+        shared_library('qemu-system-x86_64', ...)
+
+    behind the new -Dshared_emulator option, and jni/limbo/vm-executor-jni.c
+    resolves and calls:
+
+        void qemu_init(int argc, char **argv);
+        int  qemu_main_loop(void);
+        void qemu_cleanup(int status);
+
+    These signatures changed after QEMU 5.1 -- keep vm-executor-jni.c in sync
+    when upgrading QEMU. The same applies to the ShutdownCause values in
+    vm-executor-jni.h, which mirror qapi/run-state.json.
+
+    Disk images opened through the Storage Access Framework are routed through
+    Limbo's helpers with linker --wrap (see android-qemu-config.mak). Upstream
+    Limbo did this by rewriting static archives with objcopy --redefine-sym
+    from inside Makefile.target; there is no such hook in a meson build.
+
+===============================================================================
+
+8. Development notes
+
+    a. Android-compatibility changes in QEMU are tagged __LIMBO__.
+
+    b. Configuration files:
+        android-config/android-limbo-config.mak       user-facing settings
+        android-config/android-qemu-config.mak        configure command line
+        android-config/android-qemu-config-11.0.3.mak QEMU 11 feature flags
+        android-config/gen-meson-cross.sh             meson cross file generator
+        android-config/build-deps.sh                  dependency cross-build
+
+    c. Makefiles:
+        Makefile, Android.mk, Application.mk, android-limbo-build.mak
+
+       android-qemu-build.mak is gone: it existed only to be included from
+       QEMU's Makefile.target.
+
+    d. Frontend UI options: Config.java
+
+===============================================================================
+
+9. Known gaps in this port
+
+    * SDL frontend is not enabled yet: patches/sdl2-2.0.8.patch still targets
+      SDL2 2.0.8 and has to be forward-ported (2.32.x is current). Until then
+      build with USE_SDL=false and use the VNC frontend.
+
+    * Only x86_64-softmmu is wired up. Other guests need libfdt cross-built
+      into the dependency prefix.
+
+    * KVM is compiled in but effectively unused: almost no retail Android
+      device exposes /dev/kvm. QEMU falls back to TCG at run time.
+
+===============================================================================
+
+10. License
+
+Limbo PC Emulator is released under GPL v2 License.
+All icons under /res are from Gnome Project (GPL v2 License)
+See file COPYING under root directory and LICENSE under limbo-android-lib/src/main/assets

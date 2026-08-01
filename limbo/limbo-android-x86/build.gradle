@@ -1,0 +1,54 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.limbo.emu.main'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId "com.limbo.emu.main"
+
+        // API 28 is the floor: bionic only provides iconv() from 28, which
+        // glib >= 2.66 (required by QEMU 11) needs. See
+        // limbo-android-lib/src/main/jni/android-config/android-limbo-config.mak
+        minSdk 28
+        targetSdk 35
+
+        // 64-bit only. QEMU 11.0 removed all 32-bit host support, so there is
+        // no libqemu-system-*.so to ship for armeabi-v7a or x86.
+        ndk { abiFilters "arm64-v8a", "x86_64" }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            jniDebuggable true
+        }
+    }
+    lint {
+        abortOnError false
+        disable 'MissingTranslation'
+    }
+
+    packaging {
+        jniLibs {
+            // The emulator library is loaded with dlopen() from a path the app
+            // computes at run time, so it has to exist as a real file on disk
+            // rather than being mapped straight out of the APK.
+            useLegacyPackaging = true
+        }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation project(':limbo-android-lib')
+}

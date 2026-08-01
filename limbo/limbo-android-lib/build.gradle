@@ -1,0 +1,39 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.limbo.emu.lib'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        // Keep in sync with the application modules and with
+        // NDK_PLATFORM_API in src/main/jni/android-config/android-limbo-config.mak
+        minSdk 28
+        targetSdk 35
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            jniDebuggable true
+        }
+    }
+
+    // The native side is built out of band by src/main/jni/Makefile
+    // (meson + ninja for QEMU, ndk-build for the compat/JNI libraries),
+    // so no externalNativeBuild block here.
+}
+
+dependencies {
+    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.preference:preference:1.2.1'
+    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime:2.8.7'
+    implementation 'androidx.lifecycle:lifecycle-common-java8:2.8.7'
+}

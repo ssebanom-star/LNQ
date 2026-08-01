@@ -1,0 +1,10 @@
+include ':limbo-android-lib'
+include ':limbo-android-x86'
+
+// The arm/ppc/sparc application modules are not part of the QEMU 11 port yet:
+// they need aarch64/ppc64/sparc64-softmmu builds, which additionally require
+// libfdt to be cross-compiled (see android-qemu-config-11.0.3.mak). Re-add
+// them once those guests build.
+//include ':limbo-android-arm'
+//include ':limbo-android-ppc'
+//include ':limbo-android-sparc'

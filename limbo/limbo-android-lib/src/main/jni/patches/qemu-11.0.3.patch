@@ -1,0 +1,379 @@
+Limbo Android compatibility patch for QEMU 11.0.3
+
+Apply from the QEMU source root:
+
+    cd limbo-android-lib/src/main/jni/qemu
+    patch -p1 < ../patches/qemu-11.0.3.patch
+
+Two kinds of change live in here:
+
+  1. Android/bionic build fixes -- QEMU upstream does not target Android, so
+     a handful of macro collisions and missing-libc-feature issues have to be
+     resolved before it compiles at all.  Tagged __LIMBO__ where the change is
+     visible in code.
+
+  2. Limbo integration -- the emulator has to be produced as a shared library
+     that the app dlopen()s (Android forbids exec'ing binaries from an app's
+     private directory), and a few display/audio knobs have to become runtime
+     variables so the Java UI can tune them.
+
+Every hunk is guarded so that a normal, non-Android build of QEMU is
+unaffected: the build-system changes sit behind the new -Dshared_emulator
+meson option or behind a probe for bionic, and the integration changes sit
+behind #ifdef __LIMBO__.
+
+Files touched:
+
+     accel/kvm/kvm-all.c      |  6 ++++++
+     audio/audio.c            |  5 +++++
+     crypto/random-platform.c | 12 +++++++++++-
+     hw/display/vga.c         | 10 ++++++++++
+     hw/net/can/ctucan_core.h |  8 ++++++++
+     include/scsi/constants.h | 20 ++++++++++++++++++++
+     include/ui/console.h     | 16 ++++++++++++++++
+     meson.build              | 48 +++++++++++++++++++++++++++++++++++++++---------
+     meson_options.txt        |  7 +++++++
+     ui/console.c             | 12 ++++++++++++
+     ui/vnc.c                 | 11 +++++++++++
+     util/oslib-posix.c       | 14 ++++++++++++++
+     12 files changed, 159 insertions(+), 10 deletions(-)
+
+----------------------------------------------------------------------
+
+diff --git a/accel/kvm/kvm-all.c b/accel/kvm/kvm-all.c
+index 92af42503..52f2334c5 100644
+--- a/accel/kvm/kvm-all.c
++++ b/accel/kvm/kvm-all.c
+@@ -2930,7 +2930,13 @@ static int kvm_init(AccelState *as, MachineState *ms)
+     QLIST_INIT(&s->kvm_parked_vcpus);
+     s->fd = qemu_open_old(s->device ?: "/dev/kvm", O_RDWR);
+     if (s->fd == -1) {
++#ifdef __LIMBO__
++        /* __LIMBO__: bionic's printf does not implement the %m extension. */
++        error_report("Could not access KVM kernel module: /dev/kvm (%s)",
++                     strerror(errno));
++#else
+         error_report("Could not access KVM kernel module: %m");
++#endif
+         ret = -errno;
+         goto err;
+     }
+diff --git a/audio/audio.c b/audio/audio.c
+index 6f10ee470..332773fd8 100644
+--- a/audio/audio.c
++++ b/audio/audio.c
+@@ -250,7 +250,12 @@ static void audio_validate_per_direction_opts(
+ 
+     if (!pdo->has_frequency) {
+         pdo->has_frequency = true;
++#ifdef __LIMBO__
++        /* __LIMBO__: 44100 stutters badly under TCG on phones. */
++        pdo->frequency = 22050;
++#else
+         pdo->frequency = 44100;
++#endif
+     }
+     if (!pdo->has_channels) {
+         pdo->has_channels = true;
+diff --git a/crypto/random-platform.c b/crypto/random-platform.c
+index f92f96987..23d9f4405 100644
+--- a/crypto/random-platform.c
++++ b/crypto/random-platform.c
+@@ -45,7 +45,17 @@ int qcrypto_random_init(Error **errp)
+     }
+ #else
+ # ifdef CONFIG_GETRANDOM
+-    if (getrandom(NULL, 0, 0) == 0) {
++    /*
++     * __LIMBO__: this is a zero-length probe call, so the buffer is never
++     * dereferenced. bionic annotates getrandom()'s first parameter as
++     * _Nonnull though, and QEMU builds with -Werror, so passing a literal
++     * NULL makes clang reject the file with -Wnonnull. Probe with the
++     * address of a real (unused) object instead; the semantics are
++     * identical for a zero-length request.
++     */
++    char probe;
++
++    if (getrandom(&probe, 0, 0) == 0) {
+         /* Use getrandom() */
+         fd = -1;
+         return 0;
+diff --git a/hw/display/vga.c b/hw/display/vga.c
+index ee7d97b5c..c59c4a9c9 100644
+--- a/hw/display/vga.c
++++ b/hw/display/vga.c
+@@ -1473,6 +1473,16 @@ void vga_dirty_log_stop(VGACommonState *s)
+     memory_region_set_log(&s->vram, false, DIRTY_MEMORY_VGA);
+ }
+ 
++#ifdef __LIMBO__
++/*
++ * __LIMBO__: after an Android rotation or a resume the SDL surface is
++ * recreated and the guest has no idea it must repaint. There is no way to
++ * force that from the UI layer, so Limbo sets this flag from JNI
++ * (VMExecutor.nativeRefreshScreen) and the VGA code redraws everything once.
++ */
++int limbo_vga_full_update;
++#endif /* __LIMBO__ */
++
+ /*
+  * graphic modes
+  */
+diff --git a/hw/net/can/ctucan_core.h b/hw/net/can/ctucan_core.h
+index 608307a63..51b9ebebb 100644
+--- a/hw/net/can/ctucan_core.h
++++ b/hw/net/can/ctucan_core.h
+@@ -31,9 +31,17 @@
+ #include "exec/hwaddr.h"
+ #include "net/can_emu.h"
+ 
++/*
++ * __LIMBO__: bionic's <linux/stddef.h> already defines
++ * __LITTLE_ENDIAN_BITFIELD (glibc's UAPI headers leave it to the caller),
++ * so an unguarded #define trips -Werror=macro-redefined on Android.
++ * The value is the same either way; only define it when it is missing.
++ */
+ #if !HOST_BIG_ENDIAN
++#ifndef __LITTLE_ENDIAN_BITFIELD
+ #define __LITTLE_ENDIAN_BITFIELD 1
+ #endif
++#endif
+ 
+ #include "ctu_can_fd_frame.h"
+ #include "ctu_can_fd_regs.h"
+diff --git a/include/scsi/constants.h b/include/scsi/constants.h
+index 717e470a5..9c1dcf757 100644
+--- a/include/scsi/constants.h
++++ b/include/scsi/constants.h
+@@ -167,6 +167,26 @@
+  *  SAM Status codes
+  */
+ 
++/*
++ * __LIMBO__: Android's <scsi/sg.h> (dragged in by scsi/utils.h) defines these
++ * same names, which glibc's copy does not. Worse, bionic uses the unshifted
++ * encoding (CHECK_CONDITION 0x01) while QEMU uses the SAM left-shifted one
++ * (0x02), so letting the platform definitions win would silently corrupt
++ * ATAPI/SCSI status bytes -- and with -Werror=macro-redefined it does not
++ * even compile. Drop the platform's definitions and use QEMU's.
++ */
++#undef GOOD
++#undef CHECK_CONDITION
++#undef CONDITION_GOOD
++#undef BUSY
++#undef INTERMEDIATE_GOOD
++#undef INTERMEDIATE_C_GOOD
++#undef RESERVATION_CONFLICT
++#undef COMMAND_TERMINATED
++#undef TASK_SET_FULL
++#undef ACA_ACTIVE
++#undef TASK_ABORTED
++
+ #define GOOD                 0x00
+ #define CHECK_CONDITION      0x02
+ #define CONDITION_GOOD       0x04
+diff --git a/include/ui/console.h b/include/ui/console.h
+index 08082389f..6341fd14b 100644
+--- a/include/ui/console.h
++++ b/include/ui/console.h
+@@ -44,8 +44,24 @@ OBJECT_DECLARE_SIMPLE_TYPE(QemuFixedTextConsole, QEMU_FIXED_TEXT_CONSOLE)
+ #define QEMU_CAPS_LOCK_LED   (1 << 2)
+ 
+ /* in ms */
++#ifdef __LIMBO__
++/*
++ * __LIMBO__: Limbo lets the user trade refresh rate against battery/CPU from
++ * the Android UI, so these have to be writable at run time. The JNI bridge
++ * dlsym()s them out of the emulator library -- keep the names in sync with
++ * VMExecutor.setSDLRefreshRateDefault()/setSDLRefreshRateIdle().
++ */
++extern int gui_refresh_interval_default;
++extern int gui_refresh_interval_idle;
++#define GUI_REFRESH_INTERVAL_DEFAULT gui_refresh_interval_default
++#define GUI_REFRESH_INTERVAL_IDLE gui_refresh_interval_idle
++
++/* Set from Java before startup; enables SDL_HINT_RENDER_SCALE_QUALITY. */
++extern int limbo_sdl_scale_hint;
++#else
+ #define GUI_REFRESH_INTERVAL_DEFAULT    30
+ #define GUI_REFRESH_INTERVAL_IDLE     3000
++#endif /* __LIMBO__ */
+ 
+ /* Color number is match to standard vga palette */
+ enum qemu_color_names {
+diff --git a/meson.build b/meson.build
+index c55f601d6..f3d43f5fb 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1360,10 +1360,18 @@ if get_option('spice') \
+ endif
+ spice_headers = spice.partial_dependency(compile_args: true, includes: true)
+ 
++# __LIMBO__: Android's libc (bionic) has no separate librt -- everything that
++# glibc puts there lives in libc -- and it provides no POSIX shared memory.
++# Requiring librt would abort configuration, so probe for bionic and skip it.
++# qemu_shm_alloc() is stubbed out for bionic in util/oslib-posix.c.
++# __BIONIC__ comes from <sys/cdefs.h>, it is not a compiler builtin, so the
++# header has to be pulled in for the probe to see it.
++have_bionic = cc.get_define('__BIONIC__', prefix: '#include <sys/cdefs.h>') != ''
++
+ rt = not_found
+ if host_os != 'windows'
+   have_shm_open = cc.has_function('shm_open')
+-  if not have_shm_open
++  if not have_shm_open and not have_bionic
+     rt = cc.find_library('rt', required: true)
+   endif
+ endif
+@@ -2455,6 +2463,8 @@ config_host_data.set('CONFIG_FUZZ', get_option('fuzzing'))
+ config_host_data.set('CONFIG_GCOV', get_option('b_coverage'))
+ config_host_data.set('CONFIG_LIBUDEV', libudev.found())
+ config_host_data.set('CONFIG_LINUX', host_os == 'linux')
++# __LIMBO__: distinguishes Android's bionic libc from glibc/musl on Linux.
++config_host_data.set('CONFIG_BIONIC', have_bionic)
+ config_host_data.set('CONFIG_POSIX', host_os != 'windows')
+ config_host_data.set('CONFIG_WIN32', host_os == 'windows')
+ config_host_data.set('CONFIG_LZO', lzo.found())
+@@ -4446,14 +4456,34 @@ foreach target : target_dirs
+       exe_name += '-unsigned'
+     endif
+ 
+-    emulator = executable(exe_name, exe['sources'],
+-               install: true,
+-               c_args: c_args,
+-               dependencies: arch_deps + exe['dependencies'],
+-               objects: lib.extract_all_objects(recursive: true),
+-               link_depends: [block_syms, qemu_syms],
+-               link_args: link_args,
+-               win_subsystem: exe['win_subsystem'])
++    # __LIMBO__: on Android the emulator is dlopen()ed by the app instead of
++    # being exec'd, so emit lib<name>.so rather than an executable.  The
++    # object set is identical -- only the link mode differs.  system/main.c's
++    # main() stays in the library and is simply never called; Limbo's JNI
++    # bridge calls qemu_init()/qemu_main_loop()/qemu_cleanup() itself.
++    if get_option('shared_emulator') and target.endswith('-softmmu')
++      emulator = shared_library(exe_name, exe['sources'],
++                 install: true,
++                 c_args: c_args,
++                 dependencies: arch_deps + exe['dependencies'],
++                 objects: lib.extract_all_objects(recursive: true),
++                 link_depends: [block_syms, qemu_syms],
++                 link_args: link_args,
++                 # Android's package installer only extracts unversioned
++                 # lib*.so from an APK, so neither version nor soversion may
++                 # be set here -- meson then emits a plain lib<name>.so.
++                 name_prefix: 'lib',
++                 name_suffix: 'so')
++    else
++      emulator = executable(exe_name, exe['sources'],
++                 install: true,
++                 c_args: c_args,
++                 dependencies: arch_deps + exe['dependencies'],
++                 objects: lib.extract_all_objects(recursive: true),
++                 link_depends: [block_syms, qemu_syms],
++                 link_args: link_args,
++                 win_subsystem: exe['win_subsystem'])
++    endif
+ 
+     if host_os == 'darwin'
+       icon = 'pc-bios/qemu.rsrc'
+diff --git a/meson_options.txt b/meson_options.txt
+index 31d5916cf..af1ea3f24 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -390,5 +390,12 @@ option('x86_version', type : 'combo', choices : ['0', '1', '2', '3', '4'], value
+ 
+ option('rust', type: 'feature', value: 'disabled',
+        description: 'Rust support')
++
++# __LIMBO__: Android cannot exec arbitrary binaries from an app's private
++# directory (W^X, enforced since API 29), so Limbo loads the system emulator
++# as a shared library with dlopen() and calls qemu_init()/qemu_main_loop()
++# directly.  Build the emulator as lib<name>.so instead of an executable.
++option('shared_emulator', type: 'boolean', value: false,
++       description: 'build system emulators as shared libraries (Limbo/Android)')
+ option('strict_rust_lints', type: 'boolean', value: false,
+        description: 'Enable stricter set of Rust warnings')
+diff --git a/ui/console.c b/ui/console.c
+index f445db113..631a189f4 100644
+--- a/ui/console.c
++++ b/ui/console.c
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include "qemu/osdep.h"
++
+ #include "ui/console.h"
+ #include "hw/core/qdev.h"
+ #include "qapi/error.h"
+@@ -41,6 +42,17 @@
+ 
+ #include "console-priv.h"
+ 
++#ifdef __LIMBO__
++/*
++ * __LIMBO__: backing storage for the GUI_REFRESH_INTERVAL_* macros, which are
++ * variables rather than constants on Android (see include/ui/console.h).
++ * The idle interval is far shorter than upstream's 3000ms because Limbo's SDL
++ * surface needs to keep repainting after the app is resumed.
++ */
++int gui_refresh_interval_default = 30;
++int gui_refresh_interval_idle = 300;
++#endif /* __LIMBO__ */
++
+ OBJECT_DEFINE_ABSTRACT_TYPE(QemuConsole, qemu_console, QEMU_CONSOLE, OBJECT)
+ 
+ typedef struct QemuGraphicConsole {
+diff --git a/ui/vnc.c b/ui/vnc.c
+index 3a041926b..0d0e5728f 100644
+--- a/ui/vnc.c
++++ b/ui/vnc.c
+@@ -56,8 +56,19 @@
+ #include "io/dns-resolver.h"
+ #include "monitor/monitor.h"
+ 
++#ifdef __LIMBO__
++/*
++ * __LIMBO__: exposed to Java via VMExecutor.setvncrefreshrate(); a phone on
++ * a slow link wants a very different refresh cadence than a desktop.
++ */
++int vnc_refresh_interval_base = 30;
++int vnc_refresh_interval_inc = 30;
++#define VNC_REFRESH_INTERVAL_BASE vnc_refresh_interval_base
++#define VNC_REFRESH_INTERVAL_INC  vnc_refresh_interval_inc
++#else
+ #define VNC_REFRESH_INTERVAL_BASE GUI_REFRESH_INTERVAL_DEFAULT
+ #define VNC_REFRESH_INTERVAL_INC  50
++#endif /* __LIMBO__ */
+ #define VNC_REFRESH_INTERVAL_MAX  GUI_REFRESH_INTERVAL_IDLE
+ static const struct timeval VNC_REFRESH_STATS = { 0, 500000 };
+ static const struct timeval VNC_REFRESH_LOSSY = { 2, 0 };
+diff --git a/util/oslib-posix.c b/util/oslib-posix.c
+index dc001da66..516cfd4e2 100644
+--- a/util/oslib-posix.c
++++ b/util/oslib-posix.c
+@@ -982,6 +982,19 @@ void qemu_close_all_open_fd(const int *skip, unsigned int nskip)
+     }
+ }
+ 
++#ifdef CONFIG_BIONIC
++/*
++ * __LIMBO__: Android's libc has no POSIX shared memory (no shm_open/shm_unlink
++ * and no librt to pull them from); the platform uses ashmem/memfd instead.
++ * Only -object memory-backend-shm needs this, which Limbo never asks for, so
++ * fail cleanly rather than leaving an undefined symbol in the emulator .so.
++ */
++int qemu_shm_alloc(size_t size, Error **errp)
++{
++    error_setg(errp, "POSIX shared memory is not available on Android");
++    return -1;
++}
++#else
+ int qemu_shm_alloc(size_t size, Error **errp)
+ {
+     g_autoptr(GString) shm_name = g_string_new(NULL);
+@@ -1033,3 +1046,4 @@ int qemu_shm_alloc(size_t size, Error **errp)
+ 
+     return fd;
+ }
++#endif /* CONFIG_BIONIC */
