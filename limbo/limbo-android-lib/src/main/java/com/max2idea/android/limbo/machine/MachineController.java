@@ -402,14 +402,6 @@ public class MachineController {
         notifyEventListeners(Event.MachineFullscreen, null);
     }
 
-    public void enableAaudio(int value) {
-        machineExecutor.enableAaudio(value);
-    }
-
-    public void ignoreBreakpointInvalidation(boolean value) {
-        machineExecutor.ignoreBreakpointInvalidation(value?1:0);
-    }
-
     public enum MachineStatus {
         Ready, Stopped, Saving, Paused, SaveCompleted, SaveFailed, Unknown, Running
     }

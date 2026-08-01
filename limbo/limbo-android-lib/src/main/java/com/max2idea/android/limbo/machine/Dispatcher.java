@@ -339,14 +339,8 @@ public class Dispatcher implements ViewListener {
             case DISPLAY_CHANGED:
                 displayChanged(value);
                 break;
-            case ENABLE_AAUDIO:
-                MachineController.getInstance().enableAaudio(convertInt(action, value));
-                break;
             case FULLSCREEN:
                 MachineController.getInstance().setFullscreen();
-                break;
-            case IGNORE_BREAKPOINT_INVALIDATION:
-                MachineController.getInstance().ignoreBreakpointInvalidation(convertBoolean(action, value));
                 break;
         }
     }

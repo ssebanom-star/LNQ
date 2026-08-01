@@ -358,7 +358,9 @@ $QEMU_SRC/configure \
 | `__wrap_*` SAF 후킹 구현 + 실제 리디렉션 검증 | **완료** |
 | compat 레이어(`libcompat-limbo.so`) NDK r27 빌드 | **완료** |
 | `x86_64` ABI 빌드 | 미실행 (같은 파이프라인, ABI만 교체) |
-| ndk-build 쪽 (compat, SDL2 Android.mk, JNI) 전체 실행 | 미검증 |
+| JNI 브릿지(`vm-executor-jni.c`) NDK r27 컴파일 | **완료** |
+| Java `native` 선언 ↔ 네이티브 구현 대조 | **완료** (§3-E) |
+| ndk-build 전체 실행 (`Android.mk` 경유) | 미검증 |
 | Gradle APK 조립 | 미검증 |
 | 실기기 부팅 테스트 | 미실행 |
 
@@ -387,6 +389,32 @@ bionic이 API 24부터 `strchrnul`을 제공하므로 **셰임을 삭제**했다
 암묵적 선언이라 반환값이 `int`로 간주되어 역시 포인터가 절단된다. clang r27은 경고가
 아니라 에러로 거부한다. `valloc` 자체는 bionic LP64에 없고 QEMU의
 `util/memalign.c:61`이 호출하므로 **셰임은 유지하되 헤더를 추가**했다.
+
+### 3-E. Java ↔ JNI 계약이 깨져 있던 것
+
+네이티브 쪽에서 두 함수를 제거했는데 Java 쪽 스택을 같이 정리하지 않아
+런타임 `UnsatisfiedLinkError`가 날 상태였다. Java의 `native` 선언 목록과
+실제 구현 심볼을 기계적으로 대조해서 잡았다.
+
+| Java `native` | 왜 구현이 사라졌나 |
+|---|---|
+| `nativeIgnoreBreakpointInvalidate` | QEMU 11에 `breakpoint_invalidate()`가 없음 |
+| `nativeEnableAaudio` | SDL2 AAudio 브리지 패치를 폐기 (§3-B.1) |
+
+두 기능 모두 `res/xml` 설정 화면 → `LimboSettingsManager` → `Activity` →
+`Dispatcher` → `MachineAction` → `MachineController` → `MachineExecutor` →
+`VMExecutor` → JNI 까지 전체 스택이 살아 있었으므로 전부 제거했다.
+`compat/sdl-addons`(AAudio 브리지 모듈)와 `Config.aaudioLibName`도 함께 삭제.
+
+검증 방법 (회귀 방지용으로 재실행 가능):
+
+```sh
+# Java가 선언한 native 메서드
+grep -rhoE "native [a-zA-Z]+ [a-zA-Z]+\(" VMExecutor.java | sed 's/.* //;s/(//' | sort
+# 실제 구현 (JNI + sdl-extensions)
+llvm-nm --defined-only vm-executor-jni.o | grep -oE "VMExecutor_[a-zA-Z]+" ...
+# 차집합이 비어 있어야 한다
+```
 
 ### 의도적으로 이식하지 않은 것
 

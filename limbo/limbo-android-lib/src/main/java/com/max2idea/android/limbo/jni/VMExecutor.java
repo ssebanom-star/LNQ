@@ -99,8 +99,6 @@ class VMExecutor extends MachineExecutor {
 
     public native int getSDLRefreshRateIdle();
 
-    public native void nativeIgnoreBreakpointInvalidate(int value);
-
     public native void nativeMouseEvent(int button, int action, int relative, int x, int y);
 
     public native void nativeMouseBounds(int xmin, int xmax, int ymin, int ymax);
@@ -109,7 +107,6 @@ class VMExecutor extends MachineExecutor {
 
     public native void nativeRefreshScreen(int value);
 
-    public native void nativeEnableAaudio(int value, String aaudioLibName, String aaudioLibPath);
 
     /**
      * Prints parameters in qemu format
@@ -790,7 +787,6 @@ private String getQemuLibrary() {
                 changeVncPass(LimboApplication.getInstance(), 2000);
             }
 
-            ignoreBreakpointInvalidation(LimboSettingsManager.getIgnoreBreakpointInvalidation(LimboApplication.getInstance())?1:0, 2000);
             QmpClient.setExternal(LimboSettingsManager.getEnableExternalQMP(LimboApplication.getInstance()));
             String libFilename = getQemuLibrary();
             res = start(Config.storagedir, LimboApplication.getBasefileDir(),
@@ -915,32 +911,6 @@ private String getQemuLibrary() {
         ) {
             nativeRefreshScreen(1);
         }
-    }
-
-    @Override
-    public void enableAaudio(int value) {
-        nativeEnableAaudio(value, Config.aaudioLibName,
-                FileUtils.getNativeLibDir(LimboApplication.getInstance())
-                        + "/" + Config.aaudioLibName);
-    }
-
-    @Override
-    public void ignoreBreakpointInvalidation(int value){
-        ignoreBreakpointInvalidation(value, 0);
-    }
-
-    private void ignoreBreakpointInvalidation(final int value, final long delay) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.sleep(delay);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                nativeIgnoreBreakpointInvalidate(value);
-            }
-        }).start();
     }
 
     //TODO: re-enable getting status from the vm

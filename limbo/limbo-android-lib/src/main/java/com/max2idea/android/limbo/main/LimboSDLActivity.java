@@ -863,7 +863,6 @@ public class LimboSDLActivity extends SDLActivity
     }
 
     protected void setupAudio() {
-        notifyAction(MachineAction.ENABLE_AAUDIO, LimboSettingsManager.getEnableAaudio(this)?1:0);
         if (am == null) {
             am = (AudioManager) mSingleton.getSystemService(Context.AUDIO_SERVICE);
             maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);

@@ -57,8 +57,6 @@ public abstract class MachineExecutor {
 
     public abstract MachineController.MachineStatus getSaveVMStatus();
 
-    public abstract void enableAaudio(int value);
-
     public abstract boolean changeRemovableDevice(MachineProperty drive, String diskValue);
 
     public abstract String getDeviceName(MachineProperty driveProperty);
@@ -66,6 +64,4 @@ public abstract class MachineExecutor {
     public abstract void updateDisplay(int width, int height, int orientation);
 
     public abstract void setFullscreen();
-
-    public abstract void ignoreBreakpointInvalidation(int value);
 }

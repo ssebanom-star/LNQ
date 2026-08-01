@@ -2739,7 +2739,6 @@ public class LimboActivity extends AppCompatActivity
             public void run() {
                 updateValues();
                 if(libLoaded)
-                    notifyAction(MachineAction.IGNORE_BREAKPOINT_INVALIDATION, LimboSettingsManager.getIgnoreBreakpointInvalidation(LimboActivity.this));
             }
         }, 1000);
 

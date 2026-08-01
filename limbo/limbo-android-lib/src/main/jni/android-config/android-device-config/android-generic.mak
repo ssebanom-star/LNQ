@@ -24,11 +24,6 @@ ARCH_CFLAGS += -Wno-macro-redefined
 #libs
 ARCH_LD_FLAGS += -lc -lm -llog
 
-# add aaudio
-ifeq ($(USE_AAUDIO),true)
-	ARCH_CFLAGS += -D__ENABLE_AAUDIO__
-endif
-
 # Suppress some warnings
 #ARCH_CFLAGS += -Wno-psabi
 ARCH_CFLAGS += -Wno-error=declaration-after-statement -Wno-unused-variable

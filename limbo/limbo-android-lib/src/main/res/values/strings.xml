@@ -363,13 +363,9 @@
     <string name="mouseButtonDelay">Mouse Button Click Delay</string>
     <string name="mouseButtonDelaySummary">Delay between mouse button clicks. Lower values have better performance but mouse events might be not be understood by the emulator so use higher values.</string>
     <string name="machineHeader">Machine:</string>
-    <string name="EnableAaudio">Enable Aaudio</string>
-    <string name="EnableAaudioSummary">Aaudio is an alternative native sound streamer library for better audio performance. Needs app restart!</string>
     <string name="Interface">Interface</string>
     <string name="diskCache">Disk Cache</string>
     <string name="diskCacheSummary">Disk Cache might not work with Legacy Manager! If you encounter issues set to Default</string>
-    <string name="IgnoreBreakpointInvalidation">Ignore Breakpoint Invalidation</string>
-    <string name="IgnoreBreakpointInvalidationSummary">Ignore Breakpoint Invalidation</string>
     <string name="ImportBIOSFile">Import BIOS</string>
     <string name="importBIOSInstructions">Select a BIOS file (bin, rom, etc..) to import.</string>
 </resources>

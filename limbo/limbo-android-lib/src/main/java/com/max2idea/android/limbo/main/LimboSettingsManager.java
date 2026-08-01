@@ -255,11 +255,6 @@ public class LimboSettingsManager extends PreferenceActivity {
         return Integer.parseInt(sizeStr);
     }
 
-    public static boolean getEnableAaudio(Context activity) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
-        return prefs.getBoolean("enableAaudio", false);
-    }
-
     public static String getDiskCache(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         return prefs.getString("diskCachePref", context.getString(R.string.Default));
@@ -297,8 +292,6 @@ public class LimboSettingsManager extends PreferenceActivity {
             addPreferencesFromResource(R.xml.software_updates);
         if(Config.enableImmersiveMode)
             addPreferencesFromResource(R.xml.immersive);
-        if (Build.VERSION.SDK_INT >= 26)
-            addPreferencesFromResource(R.xml.aaudio);
     }
 
     public void promptVNCPass(final Activity activity) {
@@ -386,11 +379,6 @@ public class LimboSettingsManager extends PreferenceActivity {
     public static boolean getPreventMouseOutOfBounds(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         return prefs.getBoolean("preventMouseOutOfBounds", false);
-    }
-
-    public static boolean getIgnoreBreakpointInvalidation(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        return prefs.getBoolean("ignoreBreakpointInvalidation", false);
     }
 
 }
