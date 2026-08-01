@@ -15,3 +15,7 @@ limbo/**/jniLibs/
 limbo/limbo-android-lib/src/main/assets/roms/
 limbo/limbo-android-x86/src/main/assets/roms/
 limbo/limbo-android-x86/src/main/assets/QEMU_VERSION
+
+# Transport-only split of the APK (chat upload limit is 30 MiB). Same bytes as
+# dist/*.apk, which is tracked -- no point storing them twice.
+dist/limbo-apk.part*

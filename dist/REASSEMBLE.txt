@@ -1,0 +1,21 @@
+APK가 업로드 제한(30 MiB)을 넘어 분할 전송했습니다.
+
+합치기:
+
+  # Linux / macOS
+  cat limbo-apk.part00 limbo-apk.part01 > limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+
+  # Windows (PowerShell)
+  cmd /c copy /b limbo-apk.part00 + limbo-apk.part01 limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+
+무결성 확인 (아래 값과 일치해야 합니다):
+4ffab84cb183c2f3ca11b3d4dc60bac4cee0c669513928b742cd7c615be48f92  limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+
+  sha256sum limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+
+설치:
+
+  adb install -r limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+
+주의: arm64-v8a 전용, Android 9(API 28) 이상. 디버그 키로 서명되어 있습니다.
+이 빌드는 기기에서 한 번도 실행된 적이 없습니다 - dist/README.md 참조.
