@@ -416,6 +416,70 @@ llvm-nm --defined-only vm-executor-jni.o | grep -oE "VMExecutor_[a-zA-Z]+" ...
 # 차집합이 비어 있어야 한다
 ```
 
+### 3-F. 파이프라인을 실제로 돌려서 나온 것들
+
+문서와 빌드 스크립트를 다 쓴 뒤 `make limbo` / `gradle`을 처음 실행하면서 나온 문제들.
+전부 "작성했지만 실행한 적 없던" 코드에서 나왔다.
+
+#### `-Ofast`가 QEMU 부동소수점을 망가뜨림
+
+Limbo의 `USE_OPTIMIZATION=true`는 `-Ofast`를 붙인다. 이건 `-ffast-math`를 포함하는데,
+QEMU의 `fpu/`와 `subprojects/berkeley-softfloat-3`는 **게스트의 IEEE-754 의미론을
+정확히 재현**하는 코드다 — 반올림 모드, NaN 전파, 예외 플래그까지. fast-math를 켜면
+컴파일러가 그게 다 상관없다고 가정하고 최적화하므로 **게스트 부동소수점 결과가
+조용히 달라진다.**
+
+빌드도 안 된다. `berkeley-testfloat-3`가 `#pragma STDC FENV_ACCESS ON`을 쓰는데
+precise FP가 꺼지면 clang이 거부한다:
+
+```
+error: '#pragma STDC FENV_ACCESS ON' is illegal when precise is disabled
+```
+
+→ `-O2`로 변경.
+
+#### compat 헤더가 QEMU 네임스페이스를 오염시킴
+
+`SYSTEM_INCLUDE`가 `limbo_compat_filesystem.h`와 `limbo_compat.h`를 모든 QEMU
+번역 단위에 force-include 했다. 이 헤더들은 `get_fd()`, `close_fd()`, `fd_t`, `jvm`
+같은 접두사 없는 짧은 이름을 선언한다.
+
+```
+migration/vmstate-types.c:321: error: static declaration of 'get_fd'
+                               follows non-static declaration
+```
+
+이 선언들은 `open()`을 심볼 이름 치환으로 `android_open()`에 연결하던 시절에만
+필요했다. `--wrap`은 링크 시점에 처리하므로 QEMU 쪽에 선언이 보일 필요가 없다.
+→ force-include 목록에서 제거.
+
+#### pc-bios 자산이 비어 있었음
+
+펌웨어가 **두 트리에 나뉘어** 있다. 대부분의 `.bin`/`.rom`은 소스 트리에만 있고,
+`descriptors/`, `dtb/`, `optionrom/`, `keymaps/`와 압축 해제된 edk2 이미지는 빌드
+디렉터리에 생성된다. 어느 한쪽만 복사하면 **BIOS 없는 `assets/roms`가 조용히 만들어진다.**
+
+→ meson의 install 규칙으로 datadir을 스테이징 prefix에 조립하고(`--prefix=/` +
+`--destdir`) 통째로 복사. `ninja install`이 아니라 `meson install --no-rebuild`를
+쓴다 — 전자는 testfloat 스위트를 포함한 모든 타깃을 빌드한다.
+
+#### SDL 내부 심볼이 숨겨져 있었음
+
+`compat/sdl-extensions`는 `SDL_SendMouseMotion/Button/Wheel`을 호출해 입력을
+주입하는데, 이들은 SDL 내부 함수라 CMake 빌드의 `-fvisibility=hidden`에 가려진다.
+업스트림 Limbo는 ndk-build로 SDL을 빌드했고 거기엔 그 플래그가 없어서 우연히
+동작했다.
+
+→ 당장은 `HAVE_GCC_FVISIBILITY=0`으로 우회. **제대로 된 해결은 `SDL_limbomouse.c`를
+공개 API(`SDL_PushEvent`)로 재작성**하는 것이지만 포인터 동작 검증에 실기기가 필요해
+후속 작업으로 남겼다.
+
+#### Java 쪽
+
+`javac`를 처음 돌리자 §3-E에서 제거한 호출의 잔해가 나왔다 —
+`LimboActivity.onResume()`의 `if(libLoaded)`가 본문을 잃고 매달려 있었다.
+그리고 targetSdk 35는 런처 액티비티에 `android:exported` 명시를 요구한다.
+
 ### 의도적으로 이식하지 않은 것
 
 | 원래 패치 | 사유 |
