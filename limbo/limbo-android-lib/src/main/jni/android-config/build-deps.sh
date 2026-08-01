@@ -131,6 +131,18 @@ fi
 #
 # Expects the Limbo patch to have been applied already:
 #   cd $SRC/SDL2-$SDL_VER && patch -p1 < <jni>/patches/sdl2-$SDL_VER.patch
+#
+# HAVE_GCC_FVISIBILITY=0 suppresses the -fvisibility=hidden that SDL's CMake
+# build adds. Limbo's compat/sdl-extensions injects input events by calling
+# SDL_SendMouseMotion/Button/Wheel, which are internal to SDL and therefore
+# hidden; upstream Limbo got away with it because it built SDL through
+# ndk-build, which never set that flag.
+#
+# This is a workaround, not a design: the right fix is to rewrite
+# SDL_limbomouse.c on top of the public API (SDL_PushEvent with
+# SDL_MOUSEMOTION / SDL_MOUSEBUTTON* / SDL_MOUSEWHEEL), after which the flag
+# can go back to SDL's default. That needs a device to verify pointer
+# behaviour, so it is left as follow-up work.
 ######################################################################
 if [ ! -f "$PREFIX/lib/pkgconfig/sdl2.pc" ]; then
     fetch "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VER/SDL2-$SDL_VER.tar.gz" "SDL2-$SDL_VER.tar.gz"
@@ -146,7 +158,8 @@ if [ ! -f "$PREFIX/lib/pkgconfig/sdl2.pc" ]; then
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
         -DCMAKE_INSTALL_LIBDIR=lib \
         -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF \
-        -DCMAKE_C_FLAGS="-D__LIMBO__"
+        -DCMAKE_C_FLAGS="-D__LIMBO__" \
+        -DHAVE_GCC_FVISIBILITY=0
     cmake --build "$SRC/sdl-build-$ABI" -j"$(nproc)"
     cmake --install "$SRC/sdl-build-$ABI"
 fi

@@ -1,25 +1,31 @@
-#include $(call all-subdir-makefiles)
+# ndk-build modules: the Limbo-side native code.
+#
+# QEMU itself is NOT built here -- it is a meson/ninja build driven by the
+# top-level Makefile. This file only covers the small libraries that the app
+# loads directly.
 
 #dep libs
-include $(NDK_PROJECT_PATH)/jni/compat/musl/Android.mk
 include $(NDK_PROJECT_PATH)/jni/compat/Android.mk
-# compat/sdl-addons was Limbo's AAudio bridge for SDL 2.0.8, which could only
-# reach Android audio through Java AudioTrack. SDL 2.32 has a native AAudio
-# driver, so the bridge is dead code; see patches/sdl2-2.32.4.patch.
-ifeq ($(USE_AAUDIO),true)
-	$(error USE_AAUDIO is obsolete with SDL 2.32 - unset it)
-endif
 
 ifeq ($(USE_SDL),true)
-	include $(NDK_PROJECT_PATH)/jni/SDL2/Android.mk
+	include $(NDK_PROJECT_PATH)/jni/compat/sdl-prebuilt.mk
+	include $(NDK_PROJECT_PATH)/jni/compat/sdl-extensions/Android.mk
 endif
-include $(NDK_PROJECT_PATH)/jni/compat/sdl-extensions/Android.mk
+
 include $(NDK_PROJECT_PATH)/jni/limbo/Android.mk
 
-#Optional libs
-#include $(NDK_PROJECT_PATH)/jni/png/Android.mk
-#include $(NDK_PROJECT_PATH)/jni/jpeg/Android.mk
-
-#TODO: For Spice
-#include $(NDK_PROJECT_PATH)/jni/openssl/Android.mk
-#include $(NDK_PROJECT_PATH)/jni/spice/Android.mk
+# Dropped relative to upstream Limbo:
+#
+#   compat/musl        iconv/gettext shims. bionic provides iconv from API 28
+#                      (this project's minimum) and glib links proxy-libintl
+#                      statically, so the shims are dead code -- and defining
+#                      iconv_open on top of bionic's is asking for trouble.
+#
+#   compat/sdl-addons  AAudio bridge for SDL 2.0.8. SDL has had a native
+#                      AAudio backend since 2.0.14 and prefers it over the
+#                      legacy Java AudioTrack driver.
+#
+#   SDL2/Android.mk    SDL2 is cross-built once by android-config/build-deps.sh
+#                      (with CMake, because QEMU needs an sdl2.pc from it) and
+#                      consumed here as a prebuilt -- see compat/sdl-prebuilt.mk.
+#                      Building it twice would produce two different libSDL2.so.

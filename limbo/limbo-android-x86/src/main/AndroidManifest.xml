@@ -10,6 +10,7 @@
         >
         <activity
             android:name="LimboEmuActivity"
+            android:exported="true"
             android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize"
             android:label="Limbo x86"
             android:launchMode="singleTop"

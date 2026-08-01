@@ -3,7 +3,7 @@ LIMBO_JNI_ROOT := $(CURDIR)/jni
 include $(LIMBO_JNI_ROOT)/android-limbo-build.mak
 
 #Suppress Format errors from logutils.h macros
-APP_CFLAGS += -Wno-format-security
+APP_CFLAGS += -Wno-format-security -Wno-macro-redefined
 
 #Debug/Release
 ifeq ($(NDK_DEBUG),1)
@@ -15,9 +15,6 @@ endif
 #Don't remove this
 APP_CFLAGS += -include $(LOGUTILS)
 APP_LDFLAGS += -llog
-ifeq ($(USE_GCC),true)
-	APP_CFLAGS +=-std=gnu99
-endif
 
 APP_ARM_MODE=$(ARM_MODE)
 

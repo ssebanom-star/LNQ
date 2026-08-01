@@ -2738,7 +2738,6 @@ public class LimboActivity extends AppCompatActivity
             @Override
             public void run() {
                 updateValues();
-                if(libLoaded)
             }
         }, 1000);
 

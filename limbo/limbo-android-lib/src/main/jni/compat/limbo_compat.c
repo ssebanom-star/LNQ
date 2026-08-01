@@ -28,8 +28,9 @@ void set_jni(JNIEnv* env, jobject obj1, jclass jclass1,
 
 /*
  * bionic does not provide valloc() on 64-bit Android (it was dropped for LP64
- * along with pvalloc), but QEMU's util/memalign.c still calls it. Supply it
- * here in terms of memalign(), which bionic does have.
+ * along with pvalloc). QEMU's util/memalign.c has a valloc() branch, though on
+ * Android it takes the posix_memalign() one instead, so this is kept as a
+ * safety net for other callers rather than because QEMU needs it.
  *
  * <malloc.h> has to be included for memalign: without it clang treats the call
  * as an implicit declaration returning int, which on LP64 truncates the

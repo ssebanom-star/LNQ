@@ -48,14 +48,19 @@ ARCH_LD_CFLAGS += -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now -Wl,--warn-shared-t
 # have an adverse effect do this only if
 # you know what you're doing
 ifeq ($(USE_OPTIMIZATION),true)
-        #ARCH_CFLAGS += -O2
-        # Below optimizations might not be safe
-        ARCH_CFLAGS += -Ofast
-        # might not be supported by clang
-        #ARCH_CFLAGS += -fforce-addr
-        #ARCH_CFLAGS += -ffast-math
-        #ARCH_CFLAGS += -finline-limit=99999
-        #ARCH_CFLAGS += -fstrength-reduce
+        # -O2, NOT -Ofast.
+        #
+        # -Ofast implies -ffast-math, which is actively wrong for QEMU: the
+        # softfloat code in fpu/ and subprojects/berkeley-softfloat-3 emulates
+        # guest IEEE-754 semantics exactly, including rounding modes, NaN
+        # propagation and exception flags. Compiling it with fast-math lets
+        # the compiler assume none of that matters and silently changes guest
+        # floating-point results.
+        #
+        # It does not even build: berkeley-testfloat-3 uses
+        # "#pragma STDC FENV_ACCESS ON", which clang rejects outright once
+        # precise FP is disabled.
+        ARCH_CFLAGS += -O2
 else
     # we disable optimization make things easier when debugging
     ARCH_CFLAGS += -O0

@@ -76,6 +76,7 @@ SDL_RENDERING = -D__LIMBO_SDL_FORCE_HARDWARE_RENDERING__
 
 QEMU_CONFIGURE_FLAGS = \
 	--target-list=$(QEMU_TARGET_LIST) \
+	--prefix=/ \
 	--cc=$(CC) \
 	--cxx=$(CXX) \
 	--cross-prefix=$(CROSS_PREFIX) \

@@ -14,10 +14,10 @@ LOCAL_MODULE := compat-limbo
 LOCAL_C_INCLUDES :=			\
 	$(LOCAL_PATH)/.. \
 	$(LOCAL_PATH)/signals \
-	$(LOCAL_PATH)/../SDL2/src \
 	$(LOCAL_PATH)/../SDL2/include
 
 LOCAL_CFLAGS += -include $(LOGUTILS)
+LOCAL_CFLAGS += -Wno-format-security -Wno-macro-redefined
 LOCAL_ARM_MODE := $(ARM_MODE)
 include $(BUILD_SHARED_LIBRARY)
 

@@ -1,4 +1,17 @@
 work/
+local.properties
+.gradle/
+build/
+
+# Third-party sources fetched and patched at build time (see
+# limbo/README.developers). Not vendored: they are large and reproducible.
 limbo/limbo-android-lib/src/main/jni/qemu/
+limbo/limbo-android-lib/src/main/jni/SDL2/
+
+# Build output
 limbo/limbo-android-lib/src/main/obj/
+limbo/limbo-android-lib/src/main/libs/
 limbo/**/jniLibs/
+limbo/limbo-android-lib/src/main/assets/roms/
+limbo/limbo-android-x86/src/main/assets/roms/
+limbo/limbo-android-x86/src/main/assets/QEMU_VERSION

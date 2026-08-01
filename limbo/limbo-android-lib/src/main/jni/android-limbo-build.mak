@@ -108,14 +108,21 @@ COMPATANDROID = $(LIMBO_JNI_ROOT)/compat/limbo_compat.h
 # Unlike the QEMU 5.1.0 build we no longer add -I<jni>/glib, -I<jni>/pixman
 # and friends here: those libraries are now cross-built with meson into
 # $(LIMBO_PREFIX), and QEMU picks their include paths up from pkg-config.
+#
+# limbo_compat_filesystem.h and limbo_compat.h are deliberately NOT forced in
+# any more. They declare short, unprefixed names -- get_fd(), close_fd(),
+# fd_t, jvm -- and injecting those into every QEMU file collides with QEMU's
+# own statics; migration/vmstate-types.c has a static get_fd() and fails to
+# compile. They were only needed when open() was redirected to android_open()
+# by symbol renaming, which required the declaration to be visible. With the
+# linker --wrap approach QEMU just calls plain open() and the redirection
+# happens at link time, so the declarations are unnecessary.
 SYSTEM_INCLUDE = \
     -I$(INCLUDE_FIXED) \
     -I$(LIMBO_JNI_ROOT)/compat \
     -include $(LOGUTILS) \
-    -include $(COMPATUTILS_FD) \
     -include $(COMPATUTILS_QEMU) \
-    -include $(COMPATMACROS) \
-    -include $(COMPATANDROID)
+    -include $(COMPATMACROS)
 
 ######################################################################
 # Dependency prefix

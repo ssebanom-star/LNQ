@@ -33,18 +33,19 @@ LIMBO_APP_SPARC = $(LIMBO_PRJ_ROOT)/limbo-android-sparc/src/main
 ######################################################################
 # pc-bios assets
 #
-# QEMU 11's pc-bios/ has a rather different shape from 5.1.0's: UEFI images
-# ship bzip2-compressed (edk2-*.fd.bz2) and are decompressed at build time
-# into the meson build directory, and there are new descriptors/ and dtb/
-# subdirectories. Copy from the *installed* tree rather than the source tree
-# so the decompressed firmware is picked up.
+# Do not try to pick the firmware out of either tree by hand. The blobs are
+# split across both: most .bin/.rom files only exist in the source tree, while
+# descriptors/, dtb/, optionrom/, keymaps/ and the decompressed edk2 images are
+# generated into the build directory. Let meson's own install rule assemble the
+# datadir into a staging prefix and copy that -- it is the same set QEMU would
+# look for at run time, so nothing can silently go missing.
 ######################################################################
-QEMU_DATADIR = $(QEMU_BUILD_DIR)/pc-bios
+QEMU_STAGE = $(abspath $(NDK_PROJECT_PATH)/obj/qemu-stage/$(APP_ABI))
 
-COPY_ROMS = mkdir -p ../assets/roms && \
-	cp -rf $(QEMU_DATADIR)/*.bin $(QEMU_DATADIR)/*.rom $(QEMU_DATADIR)/*.img \
-	       $(QEMU_DATADIR)/*.fd ../assets/roms/ 2>/dev/null; \
-	cp -rf $(QEMU_DATADIR)/keymaps ../assets/roms/ 2>/dev/null; true
+COPY_ROMS = rm -rf $(QEMU_STAGE) && \
+	meson install -C $(QEMU_BUILD_DIR) --no-rebuild --destdir $(QEMU_STAGE) > /dev/null && \
+	mkdir -p ../assets/roms && \
+	cp -rf $(QEMU_STAGE)/share/qemu/. ../assets/roms/
 
 COPY_QEMU_VERSION = cp -f $(QEMU_SRC_DIR)/VERSION ../assets/QEMU_VERSION
 COPY_RESOLV_CONF = mkdir -p ../assets/roms/etc/ && \
