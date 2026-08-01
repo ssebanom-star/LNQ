@@ -159,6 +159,7 @@ if [ ! -f "$PREFIX/lib/pkgconfig/sdl2.pc" ]; then
         -DCMAKE_INSTALL_LIBDIR=lib \
         -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF \
         -DCMAKE_C_FLAGS="-D__LIMBO__" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
         -DHAVE_GCC_FVISIBILITY=0
     cmake --build "$SRC/sdl-build-$ABI" -j"$(nproc)"
     cmake --install "$SRC/sdl-build-$ABI"

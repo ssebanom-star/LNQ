@@ -16,6 +16,11 @@ endif
 APP_CFLAGS += -include $(LOGUTILS)
 APP_LDFLAGS += -llog
 
+# Android 15 runs on devices with 16 KB pages, and the loader rejects a
+# shared library whose LOAD segments are only 4 KB aligned. QEMU's own link
+# gets this from QEMU_LDFLAGS; ndk-build needs telling separately.
+APP_LDFLAGS += -Wl,-z,max-page-size=16384
+
 APP_ARM_MODE=$(ARM_MODE)
 
 $(info NDK_TOOLCHAIN_VERSION = $(NDK_TOOLCHAIN_VERSION))

@@ -42,7 +42,23 @@ LIMBO_APP_SPARC = $(LIMBO_PRJ_ROOT)/limbo-android-sparc/src/main
 ######################################################################
 QEMU_STAGE = $(abspath $(NDK_PROJECT_PATH)/obj/qemu-stage/$(APP_ABI))
 
-COPY_ROMS = rm -rf $(QEMU_STAGE) && \
+# meson install refuses to run unless everything it is asked to install
+# already exists, and --no-rebuild (which we want, so the test suite is not
+# dragged in) means it will not produce them itself. Two groups have to be
+# built explicitly first:
+#
+#   trace/trace-events-all   generated, installed into the datadir
+#   pc-bios/edk2-*.fd        UEFI images, shipped bzip2-compressed in the
+#                            source tree and decompressed at build time
+#
+# The destdir must be absolute; a relative one is resolved against the build
+# directory, not the current one.
+QEMU_INSTALL_DEPS = trace/trace-events-all \
+	$(shell ninja -C $(QEMU_BUILD_DIR) -t targets all 2>/dev/null | \
+		grep -oE '^pc-bios/[^:]+')
+
+COPY_ROMS = ninja -C $(QEMU_BUILD_DIR) $(QEMU_INSTALL_DEPS) > /dev/null && \
+	rm -rf $(QEMU_STAGE) && \
 	meson install -C $(QEMU_BUILD_DIR) --no-rebuild --destdir $(QEMU_STAGE) > /dev/null && \
 	mkdir -p ../assets/roms && \
 	cp -rf $(QEMU_STAGE)/share/qemu/. ../assets/roms/
