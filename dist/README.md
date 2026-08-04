@@ -26,31 +26,47 @@ assets/roms/                             117 firmware files (BIOS, VGA BIOS,
 
 ## Status
 
-**Build 2.** Build 1 crashed the instant the app launched: `setupNativeLibs()`
-still called `System.loadLibrary()` for `compat-musl`, `glib-2.0` and
-`pixman-1`, none of which exist any more -- glib and pixman are now statically
-linked into `libqemu-system-x86_64.so`, and compat-musl was dropped because
-bionic provides iconv from API 28. Any one of those throws
-`UnsatisfiedLinkError` before the first frame.
+**Build 2.** Build 1 failed the moment you pressed Start -- the app itself came
+up fine.
+
+`setupNativeLibs()` still called `System.loadLibrary()` for `compat-musl`,
+`glib-2.0` and `pixman-1`. None of them exist any more: glib and pixman are
+statically linked into `libqemu-system-x86_64.so`, and compat-musl was dropped
+because bionic provides iconv from API 28. Any one of them throws
+`UnsatisfiedLinkError`.
+
+That code runs from the Start handler, not at startup, because
+`Config.loadNativeLibsEarly` is false and `loadNativeLibsMainThread` is true:
+
+```java
+mStart.setOnClickListener(new OnClickListener() {
+    public void onClick(View view) {
+        if (!Config.loadNativeLibsEarly && Config.loadNativeLibsMainThread) {
+            setupNativeLibs();          // <- throws here
+        }
+```
+
+It sits ahead of any decision about the display backend, which is why **VNC and
+SDL failed identically**. `libLoaded` is only set at the end of the method, so
+every Start press re-ran the same failing load.
 
 `make install` now runs `android-config/check-jni-contract.sh`, which fails the
-build if a `loadLibrary` name has no packaged `.so` or a Java `native`
+build if a `loadLibrary` name has no packaged `.so`, or a Java `native`
 declaration has no JNI symbol. Neither the compiler nor the linker can see
 those mismatches.
 
-### Expect starting a VM to still fail
+### If SDL still fails but VNC works
 
 Limbo's bundled SDL Java glue (`org/libsdl/app/*.java`) is from the SDL 2.0.8
-era, but the native library is now SDL 2.32.4. SDL's C code looks its Java
-callbacks up with `GetStaticMethodID`, and **23 of the methods it asks for do
-not exist** in the bundled glue -- `initTouch`, `setRelativeMouseEnabled`,
+era while the native library is now SDL 2.32.4. SDL's C code looks its Java
+callbacks up with `GetStaticMethodID`, and 23 of the methods it asks for are
+missing from the bundled glue -- `initTouch`, `setRelativeMouseEnabled`,
 `supportsRelativeMouse`, `requestPermission`, `getAudioOutputDevices`,
-`hapticStop` and others. That contract is only exercised once the SDL activity
-starts, i.e. when you start a VM.
+`hapticStop` and others.
 
-Fixing it means replacing the four bundled Java files with SDL 2.32.4's nine
-and re-applying Limbo's customisations on top of them. That has not been done
-yet.
+That contract is only exercised once the SDL activity starts, so it should not
+affect the VNC path. Fixing it means replacing the four bundled Java files with
+SDL 2.32.4's nine and re-applying Limbo's customisations on top. Not done yet.
 
 ## Please read before installing
 
