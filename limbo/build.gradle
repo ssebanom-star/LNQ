@@ -15,6 +15,15 @@ buildscript {
     }
 }
 
+// Single source of truth for the app version: the VERSION file at the root.
+// Bump it by 0.0.1 for every build handed out, so a reported problem can always
+// be tied back to an exact APK.
+ext.limboVersionName = file('VERSION').text.trim()
+ext.limboVersionCode = {
+    def (major, minor, patch) = ext.limboVersionName.tokenize('.')*.toInteger()
+    major * 10000 + minor * 100 + patch
+}()
+
 allprojects {
     repositories {
         google()

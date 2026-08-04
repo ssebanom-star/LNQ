@@ -24,51 +24,39 @@ assets/roms/                             117 firmware files (BIOS, VGA BIOS,
                                          option ROMs, edk2 UEFI, keymaps)
 ```
 
-## Status
+## Versioning
 
-**Build 2.** Build 1 failed the moment you pressed Start -- the app itself came
-up fine.
+`limbo/VERSION` is the single source of truth; `build.gradle` derives both
+`versionName` and `versionCode` from it. Bump the patch component by 0.0.1 for
+every build handed out, so a reported problem always maps to an exact APK.
 
-`setupNativeLibs()` still called `System.loadLibrary()` for `compat-musl`,
-`glib-2.0` and `pixman-1`. None of them exist any more: glib and pixman are
-statically linked into `libqemu-system-x86_64.so`, and compat-musl was dropped
-because bionic provides iconv from API 28. Any one of them throws
-`UnsatisfiedLinkError`.
+| version | what changed | outcome |
+|---|---|---|
+| 7.0.0 | first build | Start button died: `loadLibrary` of compat-musl / glib-2.0 / pixman-1, all removed |
+| 7.0.1 | that fix, plus `-net ...,vlan=0` removed (gone from QEMU since 3.0) | still dies -- cause unknown |
 
-That code runs from the Start handler, not at startup, because
-`Config.loadNativeLibsEarly` is false and `loadNativeLibsMainThread` is true:
+## Status: 7.0.1 still fails, and I need a log
 
-```java
-mStart.setOnClickListener(new OnClickListener() {
-    public void onClick(View view) {
-        if (!Config.loadNativeLibsEarly && Config.loadNativeLibsMainThread) {
-            setupNativeLibs();          // <- throws here
-        }
+Both VNC and SDL still die when a VM starts. Everything ruled out so far was
+found by reading code, and that has run out of road -- QEMU calls `exit()` on a
+fatal option or a missing file, and inside a `dlopen`ed library that takes the
+whole process down with no Java exception and no dialog. The reason is printed
+first, and it goes to logcat.
+
+**The catch: the logcat tag is not "limbo".** `limbo_logutils.h` builds the tag
+from `__FILE__ ":" __LINE__`, so QEMU's messages appear under tags like
+`vl.c:1234` or `qemu-error.c:56`. Filtering on "limbo" or "qemu" hides exactly
+the lines that matter.
+
+```sh
+adb logcat -c && adb logcat > limbo.log
+# start the VM in another window, then Ctrl-C once it dies
 ```
 
-It sits ahead of any decision about the display backend, which is why **VNC and
-SDL failed identically**. `libLoaded` is only set at the end of the method, so
-every Start press re-ran the same failing load.
+An unfiltered dump is what is needed. The first `error_report` line before the
+process disappears should name the problem outright.
 
-`make install` now runs `android-config/check-jni-contract.sh`, which fails the
-build if a `loadLibrary` name has no packaged `.so`, or a Java `native`
-declaration has no JNI symbol. Neither the compiler nor the linker can see
-those mismatches.
-
-### If SDL still fails but VNC works
-
-Limbo's bundled SDL Java glue (`org/libsdl/app/*.java`) is from the SDL 2.0.8
-era while the native library is now SDL 2.32.4. SDL's C code looks its Java
-callbacks up with `GetStaticMethodID`, and 23 of the methods it asks for are
-missing from the bundled glue -- `initTouch`, `setRelativeMouseEnabled`,
-`supportsRelativeMouse`, `requestPermission`, `getAudioOutputDevices`,
-`hapticStop` and others.
-
-That contract is only exercised once the SDL activity starts, so it should not
-affect the VNC path. Fixing it means replacing the four bundled Java files with
-SDL 2.32.4's nine and re-applying Limbo's customisations on top. Not done yet.
-
-## Please read before installing
+## Please read before installing## Please read before installing
 
 **This build has never been run.** No emulator on this machine could execute
 arm64 Android, so nothing here has booted a guest, drawn a frame, or opened a

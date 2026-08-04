@@ -8,6 +8,10 @@ android {
     defaultConfig {
         applicationId "com.limbo.emu.main"
 
+        // From the VERSION file at the project root; see build.gradle.
+        versionName rootProject.ext.limboVersionName + "-x86"
+        versionCode rootProject.ext.limboVersionCode
+
         // API 28 is the floor: bionic only provides iconv() from 28, which
         // glib >= 2.66 (required by QEMU 11) needs. See
         // limbo-android-lib/src/main/jni/android-config/android-limbo-config.mak

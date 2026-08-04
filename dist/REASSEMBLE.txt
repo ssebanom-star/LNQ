@@ -1,21 +1,41 @@
+Limbo x86 + QEMU 11 — v7.0.1 (arm64-v8a, debug)
+
 APK가 업로드 제한(30 MiB)을 넘어 분할 전송했습니다.
 
 합치기:
 
   # Linux / macOS
-  cat limbo-apk.part00 limbo-apk.part01 > limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+  cat limbo-apk.part00 limbo-apk.part01 > limbo-x86-qemu11-7.0.1-arm64-v8a-debug.apk
 
   # Windows (PowerShell)
-  cmd /c copy /b limbo-apk.part00 + limbo-apk.part01 limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+  cmd /c copy /b limbo-apk.part00 + limbo-apk.part01 limbo-x86-qemu11-7.0.1-arm64-v8a-debug.apk
 
-무결성 확인 (아래 값과 일치해야 합니다):
-7f95e69760d8ddeb07fdf17f447718c1672f608a807b144489da07e305c58c31  limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+무결성 확인:
 
-  sha256sum limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+  c2593c7e0326c0f01255e780cbd2618a48153a67bbacd04cd1db1af3f7cff31b  limbo-x86-qemu11-7.0.1-arm64-v8a-debug.apk
 
 설치:
 
-  adb install -r limbo-x86-qemu11-7.0.0-arm64-v8a-debug.apk
+  adb install -r limbo-x86-qemu11-7.0.1-arm64-v8a-debug.apk
 
-주의: arm64-v8a 전용, Android 9(API 28) 이상. 디버그 키로 서명되어 있습니다.
-이 빌드는 기기에서 한 번도 실행된 적이 없습니다 - dist/README.md 참조.
+-------------------------------------------------------------------------
+로그 수집이 필요합니다
+-------------------------------------------------------------------------
+
+QEMU의 에러 메시지는 logcat으로 나가지만, **태그가 "limbo"가 아니라 소스
+파일명**입니다 (vl.c:1234, qemu-error.c:56 처럼). grep limbo 로는 안 잡힙니다.
+
+필터 없이 통째로 받아주세요:
+
+  adb logcat -c
+  # 앱에서 VM Start 를 누르고, 죽은 뒤에
+  adb logcat -d > limbo.log
+
+죽으면서 로그가 잘릴 수 있으니 실시간 저장이 더 확실합니다:
+
+  adb logcat -c && adb logcat > limbo.log
+  # 다른 창에서 VM 시작, 죽은 뒤 Ctrl-C
+
+기기만 있고 adb가 없다면 Play 스토어의 logcat 리더 앱(예: "Logcat Reader")도
+됩니다. Android 9+에서는 READ_LOGS 권한 때문에 자기 앱 로그만 보이지만,
+Limbo 프로세스 로그면 충분합니다.

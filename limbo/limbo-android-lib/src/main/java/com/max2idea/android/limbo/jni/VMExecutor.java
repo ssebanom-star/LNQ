@@ -460,7 +460,8 @@ private String getQemuLibrary() {
                 }
                 paramsList.add(netParams);
             } else if (network.equals("tap")) {
-                paramsList.add("tap,vlan=0,ifname=tap0,script=no");
+                // vlan= was removed in QEMU 3.0 along with the hub concept.
+                paramsList.add("tap,ifname=tap0,script=no");
             } else if (network.equals("none")) {
                 paramsList.add("none");
             } else {
@@ -473,8 +474,9 @@ private String getQemuLibrary() {
         if (networkCard != null) {
             paramsList.add("-net");
             String nicParams = "nic";
-            if (network.equals("tap"))
-                nicParams += ",vlan=0";
+            // "-net nic,vlan=0" was removed in QEMU 3.0; the vlan concept is
+            // gone entirely and netdevs are matched by id now. Passing it makes
+            // QEMU exit before the machine is created.
             if (!networkCard.equals("Default"))
                 nicParams += (",model=" + networkCard);
             paramsList.add(nicParams);
