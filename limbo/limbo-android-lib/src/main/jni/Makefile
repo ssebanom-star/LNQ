@@ -70,7 +70,7 @@ COPY_RESOLV_CONF = mkdir -p ../assets/roms/etc/ && \
 export
 
 .PHONY: default limbo ndk clean-ndk deps config-qemu qemu install \
-        install-common clean distclean check-tools help
+        install-common clean distclean check-tools check-jni help
 
 default: limbo
 
@@ -137,6 +137,13 @@ ifneq ($(NDK_DEBUG),1)
 	$(STRIP) ../jniLibs/$(APP_ABI_DIR)/*.so
 endif
 
+# Catches the two Java<->native contracts the compiler and linker cannot see:
+# a System.loadLibrary() with no matching .so, and a Java "native" declaration
+# with no JNI symbol. Both crash on the device rather than at build time, and
+# both have already been broken once during this port.
+check-jni:
+	$(LIMBO_JNI_ROOT)/android-config/check-jni-contract.sh $(APP_ABI) $(NDK_ROOT)
+
 install: install-common
 	mkdir -p $(LIMBO_APP_X86)/jniLibs/$(APP_ABI_DIR)/
 	cp -f $(QEMU_LIB) $(LIMBO_APP_X86)/jniLibs/$(APP_ABI_DIR)/
@@ -151,6 +158,8 @@ endif
 		| grep NEEDED || true
 	@echo "(every NEEDED entry must be an unversioned platform library:"
 	@echo " Android does not extract lib*.so.N from an APK)"
+	@echo
+	$(MAKE) check-jni
 
 ######################################################################
 limbo: ndk deps config-qemu qemu install
@@ -166,4 +175,4 @@ help:
 	@echo
 	@echo " example: export BUILD_HOST=arm64-v8a BUILD_GUEST=x86_64-softmmu && make limbo"
 	@echo
-	@echo " targets: check-tools deps config-qemu qemu install clean distclean"
+	@echo " targets: check-tools check-jni deps config-qemu qemu install clean distclean"

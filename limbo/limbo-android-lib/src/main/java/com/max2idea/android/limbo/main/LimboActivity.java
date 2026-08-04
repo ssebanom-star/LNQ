@@ -1159,22 +1159,22 @@ public class LimboActivity extends AppCompatActivity
     public void setupNativeLibs() {
         if (libLoaded)
             return;
-        //Compatibility lib
+        // Compatibility lib. Also supplies the __wrap_* file hooks that
+        // libqemu-system-*.so resolves at load time, so it has to come first.
         System.loadLibrary("compat-limbo");
 
-        //Glib deps
-        System.loadLibrary("compat-musl");
-
-        //Glib
-        System.loadLibrary("glib-2.0");
-
-        //Pixman for qemu
-        System.loadLibrary("pixman-1");
+        // glib, pixman and libslirp are no longer separate .so files: they are
+        // cross-built as static archives and linked into libqemu-system-*.so.
+        // See android-config/build-deps.sh for why (Android does not extract
+        // versioned lib*.so.N from an APK).
+        //
+        // compat-musl is gone too -- bionic provides iconv from API 28, which
+        // is this app's minimum.
 
         // SDL library
         if (Config.enable_SDL) {
-            if (Build.VERSION.SDK_INT >= 26)
-                System.loadLibrary("compat-SDL2-addons");
+            // compat-SDL2-addons was Limbo's AAudio bridge for SDL 2.0.8.
+            // SDL 2.32 has a native AAudio backend and picks it automatically.
             System.loadLibrary("SDL2");
         }
 

@@ -1610,17 +1610,17 @@ class SDLInputConnection extends BaseInputConnection {
 
     @Override
     public boolean setComposingText(CharSequence text, int newCursorPosition) {
-
-        nativeSetComposingText(text.toString(), newCursorPosition);
-
+        // SDL 2.32 no longer exports Java_org_libsdl_app_SDLInputConnection_
+        // nativeSetComposingText; composing text is delivered through
+        // nativeCommitText when the IME finishes. Calling the old entry point
+        // would throw UnsatisfiedLinkError the first time the user typed with
+        // a soft keyboard.
         return super.setComposingText(text, newCursorPosition);
     }
 
     public static native void nativeCommitText(String text, int newCursorPosition);
 
     public native void nativeGenerateScancodeForUnichar(char c);
-
-    public native void nativeSetComposingText(String text, int newCursorPosition);
 
     @Override
     public boolean deleteSurroundingText(int beforeLength, int afterLength) {

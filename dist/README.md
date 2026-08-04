@@ -24,6 +24,34 @@ assets/roms/                             117 firmware files (BIOS, VGA BIOS,
                                          option ROMs, edk2 UEFI, keymaps)
 ```
 
+## Status
+
+**Build 2.** Build 1 crashed the instant the app launched: `setupNativeLibs()`
+still called `System.loadLibrary()` for `compat-musl`, `glib-2.0` and
+`pixman-1`, none of which exist any more -- glib and pixman are now statically
+linked into `libqemu-system-x86_64.so`, and compat-musl was dropped because
+bionic provides iconv from API 28. Any one of those throws
+`UnsatisfiedLinkError` before the first frame.
+
+`make install` now runs `android-config/check-jni-contract.sh`, which fails the
+build if a `loadLibrary` name has no packaged `.so` or a Java `native`
+declaration has no JNI symbol. Neither the compiler nor the linker can see
+those mismatches.
+
+### Expect starting a VM to still fail
+
+Limbo's bundled SDL Java glue (`org/libsdl/app/*.java`) is from the SDL 2.0.8
+era, but the native library is now SDL 2.32.4. SDL's C code looks its Java
+callbacks up with `GetStaticMethodID`, and **23 of the methods it asks for do
+not exist** in the bundled glue -- `initTouch`, `setRelativeMouseEnabled`,
+`supportsRelativeMouse`, `requestPermission`, `getAudioOutputDevices`,
+`hapticStop` and others. That contract is only exercised once the SDL activity
+starts, i.e. when you start a VM.
+
+Fixing it means replacing the four bundled Java files with SDL 2.32.4's nine
+and re-applying Limbo's customisations on top of them. That has not been done
+yet.
+
 ## Please read before installing
 
 **This build has never been run.** No emulator on this machine could execute
